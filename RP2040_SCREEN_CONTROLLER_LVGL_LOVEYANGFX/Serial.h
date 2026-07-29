@@ -79,9 +79,9 @@ SIGNAL LIST:
 //30 ResonanceAmpCompensation --- bool
 //31 ADSR1Restart
 //32 ADSR2Restart --- bool
-//33 ADSR3Restart
-//34 ADSR1Curves  ----
-//35 ADSR2Curves ----
+//33 OSC3 Interval (ParamId)
+//34 OSC3 Detune
+//35 LFO2->OSC3
 //36
 //37 LFO2TOVCF  ---
 //38 LFO1TOPWM  ---

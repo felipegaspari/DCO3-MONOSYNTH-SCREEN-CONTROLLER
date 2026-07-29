@@ -60,7 +60,11 @@ static void apply_param_manual_calibration_flag(int32_t v) {
 }
 
 static void apply_param_manual_calibration_stage(int32_t v) {
-  manualCalibrationStage = (uint8_t)v;
+  // Clamp to monosynth 3-osc stage range (0..5).
+  int32_t stage = v;
+  if (stage < 0) stage = 0;
+  if (stage > 5) stage = 5;
+  manualCalibrationStage = (uint8_t)stage;
   manualCalibrationOSCN  = manualCalibrationStage / 2;
 }
 
@@ -180,10 +184,12 @@ void drawManualCalibration() {
   lv_label_set_text(ui_calibrationGap, strLong);
   lv_label_set_text(ui_calibrationGapShadow, strLong);
 
+  // Monosynth: 3 oscillators × 2 stages (0–5). Odd stages 1,5 = TRI (OSC1/OSC3);
+  // odd stage 3 = SQR (OSC2), matching Input/DCO manual-cal conventions.
   if ((manualCalibrationStage % 2) == 0) {
     lv_label_set_text(ui_waveform, "SAW");
     lv_label_set_text(ui_waveformShadow, "SAW");
-  } else if (manualCalibrationStage == 1 || manualCalibrationStage == 5 || manualCalibrationStage == 9 || manualCalibrationStage == 13) {
+  } else if (manualCalibrationStage == 1 || manualCalibrationStage == 5) {
     lv_label_set_text(ui_waveform, "TRI");
     lv_label_set_text(ui_waveformShadow, "TRI");
   } else {
@@ -310,6 +316,15 @@ void setDisplayParam() {
         case 2:
           paramName = " ADSR3 TO BOTH";
           break;
+        case 3:
+          paramName = " ADSR3 TO OSC3";
+          break;
+        case 4:
+          paramName = " ADSR3 TO ALL";
+          break;
+        default:
+          paramName = " ADSR3 TO OSC";
+          break;
       }
       break;
     case ParamId::PARAM_LFO1_WAVEFORM:
@@ -332,6 +347,17 @@ void setDisplayParam() {
       break;
     case ParamId::PARAM_LFO2_TO_DETUNE2:
       paramName = " LFO2->OSC2 Pitch";
+      break;
+    case ParamId::PARAM_OSC3_INTERVAL:
+      paramName = " OSC3 Interval";
+      paramValue -= 36;
+      break;
+    case ParamId::PARAM_OSC3_DETUNE_VAL:
+      paramName = " OSC3 Detune";
+      paramValue -= 256;
+      break;
+    case ParamId::PARAM_LFO2_TO_DETUNE3:
+      paramName = " LFO2->OSC3 Pitch";
       break;
     case ParamId::PARAM_OSC_SYNC_MODE:
       paramName = " OscPhaseSync";
@@ -665,9 +691,9 @@ void setDisplayParam() {
 //30 ResonanceAmpCompensation --- bool
 //31 ADSR1Restart
 //32 ADSR2Restart --- bool
-//33 ADSR3Restart
-//34 ADSR1Curves  ----
-//35 ADSR2Curves ----
+//33 OSC3 Interval (ParamId)
+//34 OSC3 Detune
+//35 LFO2->OSC3
 //36
 //37 LFO2TOVCF  ---
 //38 LFO1TOPWM  ---
@@ -700,6 +726,9 @@ void setDisplayParam() {
   ACTION_OSC2_interval, 14
   ACTION_OSC2_detune, 15
   ACTION_LFO2_to_OSC2_detune, 16
+  ACTION_OSC3_interval, 33
+  ACTION_OSC3_detune, 34
+  ACTION_LFO2_to_OSC3_detune, 35
   ACTION_osc_sync_mode, 17
   ACTION_portamento_time, 18
   ACTION_VCF_keytrack, 19

@@ -9,8 +9,13 @@ void updateParameters(byte paramNumberNavigation, int32_t paramValueNavigation) 
     case (uint8_t)ParamId::PARAM_MANUAL_CALIBRATION_STAGE:
       // Update the current manual calibration stage and derived oscillator N
       // so the manual calibration screen tracks encoder-driven stage changes.
-      manualCalibrationStage = (uint8_t)paramValueNavigation;
-      manualCalibrationOSCN  = manualCalibrationStage / 2;
+      {
+        int32_t stage = paramValueNavigation;
+        if (stage < 0) stage = 0;
+        if (stage > 5) stage = 5;  // monosynth: 3 oscs × 2
+        manualCalibrationStage = (uint8_t)stage;
+        manualCalibrationOSCN  = manualCalibrationStage / 2;
+      }
       break;
 
     case (uint8_t)ParamId::PARAM_MANUAL_CALIBRATION_OFFSET:
