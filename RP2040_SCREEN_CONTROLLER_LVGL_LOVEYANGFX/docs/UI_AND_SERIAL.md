@@ -9,8 +9,8 @@ How UART traffic becomes LVGL updates on this sketch.
 ```mermaid
 flowchart TD
   subgraph core0 ["Core 0"]
-    S0["setup: USB + Serial1/2"]
-    L0["loop: serial_read_n + serial_read_n2"]
+    S0["setup: USB + Serial1"]
+    L0["loop: serial_read_n"]
     L0 --> Flags["volatiles / flags"]
   end
 
@@ -42,28 +42,22 @@ Core0 never touches LVGL. Core1 never reads UART.
 | 7 | `CalibrationMenu` | Load calibration screen; tabs |
 | 8 | `ManualCalibration` | Show manual cal panel |
 
-Driven by `'s'` frames from Input (and Mainboard path on Serial2). Stale comment block in `Serial.h` is **outdated** — trust `ScreenMode` in the main `.ino`.
+Driven by `'s'` frames from Input. Stale comment block in `Serial.h` is **outdated** — trust `ScreenMode` in the main `.ino`.
 
 ---
 
 ## Serial1 (Input → Screen)
 
+Only peer link (RX GP13, TX GP12, 2.5 Mbaud). The Screen never transmits on it: **GP12 is physically unconnected**, since the Input board never reads from the Screen. This link is receive-only, fed by the Input's `Serial2` TX (GP4).
+
 | Cmd | Role |
 |-----|------|
 | `'a'` / `'b'` | ADSR1/2 raw blocks → bar model + flags |
-| `'p'` / `'w'` / `'x'` | ParamId → `setDisplayParam` / levels / cal |
+| `'p'` / `'w'` / `'x'` | ParamId → `setDisplayParam` / levels / cal. Calibration gap (`PARAM_GAP_FROM_DCO` 154) arrives as `'x'`: produced by the DCO and relayed verbatim by Input |
 | `'y'` | Nav byte → `updateParameters` (cal stage/offset) |
 | `'q'` | Preset scroll: number + **16** chars + finish (18-byte payload) |
 | `'s'` | Mode signal → `serialSignal` + `signalFlag` |
 | `'c'` | Char index for name edit |
-
-## Serial2 (Mainboard → Screen)
-
-| Cmd | Role |
-|-----|------|
-| `'p'` / `'w'` / `'x'` | Params / gap / cal-related |
-| `'q'` | Preset scroll **17** bytes (no finish byte — different from Serial1) |
-| `'s'` / `'c'` | Signal / char select |
 
 Exact lengths: constants at top of `Serial.ino`.
 

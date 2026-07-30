@@ -8,11 +8,10 @@ Scoped to **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`**.
 
 | Port | RX | TX | Baud | Peer |
 |------|----|----|------|------|
-| USB `Serial` | — | — | 1 000 000 | Debug |
-| `Serial1` | 13 | 12 | 2 500 000 | Input |
-| `Serial2` | 21 | 20 | 2 500 000 | Mainboard |
+| USB `Serial` | — | — | 1 000 000 | Debug |
+| `Serial1` | 13 | 12 | 2 500 000 | Input — only peer link, receive-only (RX 13 from Input `Serial2` TX GP4; TX 12 unconnected) |
 
-Both UARTs: polling mode, FIFO 512. Brought up in Core0 `setup()`.
+`Serial1`: polling mode, FIFO 512. Brought up in Core0 `setup()`. TX pin 12 is configured in firmware but has no conductor on the board — the Input controller never reads from the Screen.
 
 ---
 

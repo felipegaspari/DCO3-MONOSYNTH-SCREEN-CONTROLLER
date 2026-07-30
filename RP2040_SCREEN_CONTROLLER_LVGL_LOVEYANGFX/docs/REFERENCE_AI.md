@@ -2,7 +2,7 @@
 
 Semantic map for **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`** only.
 
-- System: [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) → DCO4_DCO canonical  
+- System: [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) → DCO canonical  
 - UI/serial: [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md)  
 - Pins/deps: [`HARDWARE.md`](HARDWARE.md)  
 - Call sites: [`FILE_INDEX.md`](FILE_INDEX.md)  
@@ -15,7 +15,7 @@ Semantic map for **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`** only.
 | Owns | Does not own |
 |------|----------------|
 | LVGL presentation of params, presets, cal UI | Voice engine / CV generation |
-| UART RX from Input + Mainboard | Preset file storage (Input LittleFS) |
+| UART RX from Input — the only peer, which also relays the DCO gap (154) | Preset file storage (Input LittleFS) |
 | ScreenMode UI state machine | Panel scanning |
 
 Display-only: touch callback is empty.
@@ -24,7 +24,7 @@ Display-only: touch callback is empty.
 
 ## Runtime model
 
-**Core 0:** open UARTs; forever `serial_read_n` (Serial1) + `serial_read_n2` (Serial2); set volatiles/flags.
+**Core 0:** open UARTs; forever `serial_read_n` (Serial1, RX-only — RX GP13 is fed by Input, and TX GP12 is unconnected); set volatiles/flags.
 
 **Core 1:** LVGL + LovyanGFX; consume flags; update widgets; `lv_timer_handler()`.
 
@@ -37,7 +37,7 @@ Do not call LVGL from Core0 or UART parsers from Core1.
 | File | Role |
 |------|------|
 | Main `.ino` | Dual-core entry, flush, ScreenMode helpers, UI update orchestration |
-| `Serial.ino` | Two parsers + handlers |
+| `Serial.ino` | Serial1 parser + handlers |
 | `displayParams.ino` | Param→label/model, draw helpers |
 | `parameters.ino` | `'y'` nav apply |
 | `serial_*.h`, `params_def.h`, `param_router.h` | Shared-style protocol |
@@ -50,7 +50,7 @@ Do not call LVGL from Core0 or UART parsers from Core1.
 
 - **SquareLine `ui.h`** — regenerating overwrites widget names; keep draw helpers in sync.
 - **`LGFX_RP2040_FELA.hpp`** — panel pins; outside this folder.
-- **`params_def.h`** — keep ParamIds aligned with Mainboard; header guard text may still say “mainboard”.
+- **`params_def.h`** — keep ParamIds aligned with the DCO and Input boards; header guard text may still say “mainboard”.
 
 ---
 

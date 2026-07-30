@@ -130,10 +130,10 @@ enum ParamId : uint8_t {
   PARAM_MANUAL_CALIBRATION_STAGE = 152,
   PARAM_MANUAL_CALIBRATION_OFFSET= 153,
 
-  // PARAM 154: 32-bit "gap from DCO" (forwarded to screen on mainboard)
+  // PARAM 154: 32-bit "gap from DCO" (relayed to the screen by the Input board)
   PARAM_GAP_FROM_DCO             = 154,
 
-  // 155: manual calibration offsets reported from DCO back to mainboard/screen.
+  // 155: manual calibration offsets reported from DCO back to the Input board.
   PARAM_MANUAL_CALIBRATION_OFFSET_FROM_DCO = 155
 };
 

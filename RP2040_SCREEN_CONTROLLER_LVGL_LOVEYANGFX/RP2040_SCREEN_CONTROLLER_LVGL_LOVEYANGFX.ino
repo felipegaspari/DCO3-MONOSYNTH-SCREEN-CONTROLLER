@@ -89,7 +89,7 @@ static uint32_t my_tick_get_cb(void) {
 
 uint32_t paramChangeLastMillis = 0;
 /////////////////////////////////////////////////////////// setup ///////////////////////////////////////////////////
-// Core0 boot: USB debug Serial + UART1 (Input) + UART2 (Mainboard).
+// Core0 boot: USB debug Serial + Serial1 (Input, the only peer link).
 void setup() {
   //SPI.setClockDivider(SPI_CLOCK_DIV2);
 
@@ -100,12 +100,6 @@ void setup() {
   Serial1.setPollingMode(true);
   Serial1.setFIFOSize(512);
   Serial1.begin(2500000);
-
-  Serial2.setRX(21);
-  Serial2.setTX(20);
-  Serial2.setPollingMode(true);
-  Serial2.setFIFOSize(512);
-  Serial2.begin(2500000);
 
   // USBDevice.setManufacturerDescriptor("FELA         ");   /// Why doesnt it work?
   // USBDevice.setProductDescriptor("DCO4 Screen Controller       ");
@@ -139,10 +133,9 @@ void setup1() {
 }
 
 /////////////////////////////////////////////////////////// loop ///////////////////////////////////////////////////
-// Core0 hot path: drain Input (Serial1) and Mainboard (Serial2) parsers.
+// Core0 hot path: drain the Input (Serial1) parser.
 void loop(void) {
   serial_read_n();
-  serial_read_n2();
 
   // if (timer200msFlag) {
   //   Serial.print("|");

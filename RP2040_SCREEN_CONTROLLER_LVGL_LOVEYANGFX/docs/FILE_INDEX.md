@@ -7,13 +7,13 @@ Scope: **sketch folder root** sources + `docs/`. Vendored `fela_U8g2/` and `src/
 - Deep narrative: [`REFERENCE_AI.md`](REFERENCE_AI.md)
 - UI / serial protocol: [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md)
 - Display / pin map: [`HARDWARE.md`](HARDWARE.md)
-- Four-board topology: [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) (stub → DCO4_DCO canonical)
+- Three-board topology: [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) (stub → DCO canonical)
 - Repo entry / doc index: [`../README.md`](../README.md)
 
 Headers with no bodies are marked **no function definitions**.  
 **Dead** = no live callers. **Unreachable** = call site exists but cannot run as currently gated. **`#ifdef` gated** = compiled only when the flag is set. **commented-out** = body fully commented (not compiled).
 
-MCU: **RP2040** (dual Arduino cores). Screen brain: LVGL + LovyanGFX UI; Serial1 ← Input, Serial2 ← Mainboard; `ScreenMode` 1–8 from `serialSignal`.
+MCU: **RP2040** (dual Arduino cores). Screen brain: LVGL + LovyanGFX UI; Serial1 ← Input (only peer link, receive-only: RX GP13, TX GP12 unconnected); `ScreenMode` 1–8 from `serialSignal`.
 
 ---
 
@@ -28,7 +28,6 @@ flowchart TD
 
   setup0 --> uartUsb["Serial.begin 1M"]
   setup0 --> uart1["Serial1 RX13/TX12 @ 2.5M"]
-  setup0 --> uart2["Serial2 RX21/TX20 @ 2.5M"]
 
   setup1 --> lvInit["lv_init"]
   setup1 --> tftBegin["tft.begin + setRotation"]
@@ -38,7 +37,6 @@ flowchart TD
   setup1 --> uiInit["ui_init + PresetNewName anim"]
 
   loop0 --> rs1["serial_read_n() Serial1 Input"]
-  loop0 --> rs2["serial_read_n2() Serial2 Mainboard"]
 
   loop1 --> millis1["millisTimer()"]
   loop1 --> mode["getScreenMode()"]
@@ -50,9 +48,7 @@ flowchart TD
   loop1 --> lvh["lv_timer_handler"]
 
   rs1 --> handlers1["screenSerial1_handle_*"]
-  rs2 --> handlers2["screenSerial2_handle_*"]
   handlers1 --> setDisp["setDisplayParam / updateParameters / flags"]
-  handlers2 --> setDisp
   setDisp --> router["param_router_apply screenParamTable"]
   hMode --> drawP["draw_preset_scroll_1 / screens"]
   bottom --> drawParam["draw_param_1 / draw_preset_scroll_1"]
@@ -64,11 +60,10 @@ flowchart TD
 | Framework | Arduino invokes `setup` / `loop` / `setup1` / `loop1` |
 | Boot Core0 | Inside `setup()` once — UARTs only |
 | Boot Core1 | Inside `setup1()` once — LVGL + LovyanGFX + SquareLine `ui_init` |
-| Every `loop` | Core0 forever: Serial1 + Serial2 parsers |
+| Every `loop` | Core0 forever: Serial1 parser |
 | Every `loop1` | Core1 forever: mode/UI flags + `lv_timer_handler` |
 | Soft timer | `millisTimer()` runs on Core1; **flags have no live readers** today (only commented `timer200msFlag` in `loop`) |
-| Serial1 (Input) | Parser on Input→Screen (`serial_read_n`) — ADSR `'a'`/`'b'`, params, `'y'` nav, scroll/signal/char |
-| Serial2 (Mainboard) | Parser on Mainboard→Screen (`serial_read_n2`) — params, scroll, signal, char |
+| Serial1 (Input) | Only peer link, receive-only (RX GP13; TX GP12 unconnected) — parser on Input→Screen (`serial_read_n`) — ADSR `'a'`/`'b'`, params (incl. relayed DCO gap `'x'` 154), `'y'` nav, scroll/signal/char |
 | Param table | `screenParamTable[]` via `setDisplayParam` → `applyParamToModelAndSignals` (see catalogs under `displayParams.ino`) |
 | `'y'` nav | `updateParameters()` only (stage/offset); not the full display-name switch |
 | ScreenMode | `serialSignal` 1–8 → `enum class ScreenMode` |
@@ -101,7 +96,7 @@ Main sketch: dual-core split — Core0 UART RX, Core1 LVGL UI. Defines `ScreenMo
 - `my_tick_get_cb()` — Return `millis()` for LVGL tick.
   - **Called from:** LVGL via `lv_tick_set_cb` (registered in `setup1`).
   - **When:** LVGL internal timing.
-- `setup()` — USB Serial @ 1 000 000; Serial1 RX13/TX12; Serial2 RX21/TX20; both UART peers @ 2 500 000, polling, FIFO 512.
+- `setup()` — USB Serial @ 1 000 000; Serial1 RX13/TX12 (only peer link; TX12 configured in firmware but unconnected — receive-only) @ 2 500 000, polling, FIFO 512.
   - **Called from:** Arduino framework (Core 0).
   - **When:** Boot Core0 once.
 - `setup1()` — `lv_init`; LovyanGFX `tft.begin` / rotation 3; create partial buffer display + flush cb; pointer indev + touch cb; tick cb; `ui_init`; speed up `ui_PresetNewName` anim times.
@@ -122,7 +117,7 @@ Main sketch: dual-core split — Core0 UART RX, Core1 LVGL UI. Defines `ScreenMo
 - `updateCalibrationUI(ScreenMode)` — Calibration menu tab (`paramNumber` 190) or always `drawManualCalibration` in ManualCalibration.
   - **Called from:** `loop1()`.
   - **When:** Every `loop1`.
-- `loop()` — `serial_read_n()` + `serial_read_n2()`. Optional `|` print on `timer200msFlag` is **commented-out**.
+- `loop()` — `serial_read_n()`. Optional `|` print on `timer200msFlag` is **commented-out**.
   - **Called from:** Arduino framework (Core 0).
   - **When:** Forever.
 - `loop1()` — `millisTimer()`; mode helpers above; `lv_timer_handler()`.
@@ -156,34 +151,13 @@ TinyUSB device configuration (MIT header). Sketch does **not** include TinyUSB /
 
 ### `Serial.h`
 
-Externs for shared volatile UI/serial state (`presetNumber`, `paramNumber`/`paramValue`, ADSR/signal/char/level flags, `presetNameBytes`). Declares `serial_read_n()` only (`serial_read_n2` relies on Arduino auto-prototype from `Serial.ino`). Includes parser/protocol headers. Stale SIGNAL LIST comment in footer (superseded by `ScreenMode`). **No function definitions.**
+Externs for shared volatile UI/serial state (`presetNumber`, `paramNumber`/`paramValue`, ADSR/signal/char/level flags, `presetNameBytes`). Declares `serial_read_n()` (the sketch’s only UART pump). Includes parser/protocol headers. Stale SIGNAL LIST comment in footer (superseded by `ScreenMode`). **No function definitions.**
 
 ### `Serial.ino`
 
-State definitions + dual UART parsers (Serial2 = Mainboard→Screen, Serial1 = Input→Screen).
+State definitions + the single UART parser (Serial1 = Input→Screen; Input is the only peer and relays the DCO gap `'x'` 154).
 
 **Functions**
-- `screenSerial2_handle_param16` — Decode `'p'` → `setDisplayParam` + `paramChangeFlag`.
-  - **Called from:** Serial2 command table via `serial_parser_process_byte`.
-  - **When:** Mainboard `'p'`.
-- `screenSerial2_handle_param8` — Decode `'w'` → `setDisplayParam` + flag.
-  - **Called from:** Serial2 parser.
-  - **When:** Mainboard `'w'`.
-- `screenSerial2_handle_param32` — Decode `'x'` → `setDisplayParam` + flag.
-  - **Called from:** Serial2 parser.
-  - **When:** Mainboard `'x'`.
-- `screenSerial2_handle_preset_scroll` — `'q'`: preset # + 16 name chars → `presetScrollFlag`.
-  - **Called from:** Serial2 parser.
-  - **When:** Mainboard `'q'` (17-byte payload, no finish).
-- `screenSerial2_handle_signal` — `'s'`: set `serialSignal` + `signalFlag`.
-  - **Called from:** Serial2 parser.
-  - **When:** Mainboard `'s'`.
-- `screenSerial2_handle_char_select` — `'c'`: `presetChar` + `presetCharFlag`.
-  - **Called from:** Serial2 parser.
-  - **When:** Mainboard `'c'`.
-- `serial_read_n2()` — Timeout + drain Serial2 into parser.
-  - **Called from:** `loop()` every iteration.
-  - **When:** Every `loop` (Core0).
 - `screenSerial1_handle_adsr1` — `'a'`: load ADSR1 A/D/S/R words → `updateADSR1Flag`.
   - **Called from:** Serial1 parser.
   - **When:** Input `'a'`.
@@ -201,7 +175,7 @@ State definitions + dual UART parsers (Serial2 = Mainboard→Screen, Serial1 = I
   - **When:** Input `'w'`.
 - `screenSerial1_handle_param32` — Decode `'x'` → apply.
   - **Called from:** Serial1 parser.
-  - **When:** Input `'x'`.
+  - **When:** Input `'x'` — including the DCO calibration gap (154) that Input relays verbatim.
 - `screenSerial1_handle_param_nav_byte` — `'y'`: id + int8 → `updateParameters`; set `paramChangeFlag` for ids 150..155.
   - **Called from:** Serial1 parser.
   - **When:** Input `'y'`.
@@ -218,7 +192,7 @@ State definitions + dual UART parsers (Serial2 = Mainboard→Screen, Serial1 = I
   - **Called from:** `loop()` every iteration.
   - **When:** Every `loop` (Core0).
 
-Command / length inventory for both links is tabulated below (built from `screenSerial*Commands[]` + `SCREEN_SERIAL_*` constants).
+Command / length inventory for the link is tabulated below (built from `screenSerial1Commands[]` + `SCREEN_SERIAL_*` constants).
 
 **Note:** `presetNameBytesOLD[17]` is defined/externed but **never read or written** → **Dead** storage.
 
@@ -229,23 +203,11 @@ Command / length inventory for both links is tabulated below (built from `screen
 | `SCREEN_SERIAL_LEN_PARAM_16` | 4 | `[id, hi, lo, finish]` |
 | `SCREEN_SERIAL_LEN_PARAM_8` | 3 | `[id, int8, finish]` |
 | `SCREEN_SERIAL_LEN_PARAM_32` | 6 | `[id, b0..b3, finish]` |
-| `SCREEN_SERIAL2_LEN_PRESET_SCROLL` | 17 | `[preset#, 16 chars]` (no finish) |
 | `SCREEN_SERIAL1_LEN_PRESET_SCROLL` | 18 | `[preset#, 16 chars, finish]` |
 | `SCREEN_SERIAL_LEN_SIGNAL` | 1 | `[signal]` |
 | `SCREEN_SERIAL_LEN_CHAR_SELECT` | 1 | `[char index]` |
 | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | 8 | ADSR A/D/S/R words |
 | `SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV` | 3 | `'y'`: `[paramId, value, finish]` |
-
-#### Serial2 command table (`screenSerial2Commands[]` — Mainboard → Screen)
-
-| Cmd | Handler | Length const | Effect |
-|-----|---------|--------------|--------|
-| `'p'` | `screenSerial2_handle_param16` | `SCREEN_SERIAL_LEN_PARAM_16` | Decode → `setDisplayParam` + `paramChangeFlag` |
-| `'w'` | `screenSerial2_handle_param8` | `SCREEN_SERIAL_LEN_PARAM_8` | Same |
-| `'x'` | `screenSerial2_handle_param32` | `SCREEN_SERIAL_LEN_PARAM_32` | Same |
-| `'q'` | `screenSerial2_handle_preset_scroll` | `SCREEN_SERIAL2_LEN_PRESET_SCROLL` | Preset # + 16-char name → `presetScrollFlag` |
-| `'s'` | `screenSerial2_handle_signal` | `SCREEN_SERIAL_LEN_SIGNAL` | `serialSignal` + `signalFlag` |
-| `'c'` | `screenSerial2_handle_char_select` | `SCREEN_SERIAL_LEN_CHAR_SELECT` | `presetChar` + `presetCharFlag` |
 
 #### Serial1 command table (`screenSerial1Commands[]` — Input → Screen)
 
@@ -273,10 +235,10 @@ Generic non-blocking frame parser (`SERIAL_MAX_PAYLOAD` 18 for screen `'q'` fram
   - **Called from:** `serial_parser_process_byte`.
   - **When:** First byte of frame.
 - `serial_parser_check_timeout()` — Drop stale partial frames (5 ms).
-  - **Called from:** `serial_read_n`; `serial_read_n2`.
+  - **Called from:** `serial_read_n`.
   - **When:** Before draining UART if mid-payload.
 - `serial_parser_process_byte()` — State machine; invoke `on_frame` when complete.
-  - **Called from:** `serial_read_n`; `serial_read_n2`.
+  - **Called from:** `serial_read_n`.
   - **When:** Each RX byte.
 
 ### `serial_param_protocol.h`
@@ -337,7 +299,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
   - **When:** `PARAM_MANUAL_CALIBRATION_OFFSET`.
 - `apply_param_gap_from_dco` — Set `calibrationGap`.
   - **Called from:** param table.
-  - **When:** `PARAM_GAP_FROM_DCO`.
+  - **When:** `PARAM_GAP_FROM_DCO` — produced by the DCO and relayed verbatim by the Input controller as an `'x'` frame on Serial1.
 - `apply_param_ui_calibration_dismiss` — If signal 7 → signal 2 + `signalFlag`.
   - **Called from:** param table.
   - **When:** `PARAM_UI_CALIBRATION_DISMISS`.
@@ -357,7 +319,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
   - **Called from:** `updateCalibrationUI` in `ManualCalibration`.
   - **When:** Every `loop1` while in mode 8.
 - `setDisplayParam()` — Router apply, then ParamId → toast label switch (full catalog below).
-  - **Called from:** Serial2 `'p'`/`'w'`/`'x'` handlers; Serial1 `screenSerial1_apply_param_from_frame`.
+  - **Called from:** Serial1 `screenSerial1_apply_param_from_frame`.
   - **When:** Param frames (not `'y'`).
 
 #### `screenParamTable[]` (model / signal side effects)
@@ -544,7 +506,7 @@ All detailed docs live under `docs/` (this file included). Sketch/repo entry `RE
 | File | Status | Purpose |
 |------|--------|---------|
 | `README.md` (via `../README.md`) | Current | Overview / build / doc index. |
-| `docs/SYSTEM_OVERVIEW.md` | Current | Stub pointing to DCO4_DCO canonical overview (+ local UART roles). |
+| `docs/SYSTEM_OVERVIEW.md` | Current | Stub pointing to the canonical DCO overview (+ local UART roles). |
 | `docs/UI_AND_SERIAL.md` | Current | ScreenMode, UART frames, LVGL update path. |
 | `docs/HARDWARE.md` | Current | Display / UART / pin map (LovyanGFX board config). |
 | `docs/REFERENCE_AI.md` | Current | Deep semantic map. |
@@ -560,7 +522,7 @@ All detailed docs live under `docs/` (this file included). Sketch/repo entry `RE
 | `LovyanGFX` | `LGFX tft` instance |
 | `lgfx_user/LGFX_RP2040_FELA.hpp` | Board panel/bus pin config (under LovyanGFX) |
 | `ui.h` (SquareLine `libraries/ui`) | Screens/widgets (`ui_Main`, bars, labels, …) |
-| Arduino `Serial` / `Serial1` / `Serial2` | Core0 parsers + USB debug |
+| Arduino `Serial` / `Serial1` | Core0 parser + USB debug |
 
 Unused **inside this sketch folder:** `fela_U8g2/`, `src/felanew_U8g2/`, `ui.ino`, `tft_setup.h` (see § dead/legacy above).
 
@@ -571,9 +533,8 @@ Unused **inside this sketch folder:** `fela_U8g2/`, `src/felanew_U8g2/`, `ui.ino
 | Goal | Start here |
 |------|------------|
 | Boot / dual-core split | `RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX.ino` (`setup` / `setup1` / `loop` / `loop1`) |
-| UART pins / baud | `setup()` Serial1 RX13/TX12, Serial2 RX21/TX20 @ 2.5 M |
+| UART pins / baud | `setup()` Serial1 RX13/TX12 @ 2.5 M |
 | ScreenMode / signal 1–8 | `ScreenMode` enum + `handleScreenModeChange`; RX `'s'` handlers in `Serial.ino` |
-| Serial2 (Mainboard) RX commands | `screenSerial2Commands[]` table in this file + handlers in `Serial.ino` |
 | Serial1 (Input) RX commands | `screenSerial1Commands[]` table in this file + handlers in `Serial.ino` |
 | Param display names / remaps | `setDisplayParam()` catalog in this file; switch in `displayParams.ino` |
 | Param → levels / cal / mode signals | `screenParamTable[]` map in this file; `apply_param_*` in `displayParams.ino` |
