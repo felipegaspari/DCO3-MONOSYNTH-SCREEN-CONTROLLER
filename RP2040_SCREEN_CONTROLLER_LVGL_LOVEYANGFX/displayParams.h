@@ -13,6 +13,7 @@ volatile int32_t calibrationGap;
 
 volatile uint8_t OSC1Level;
 volatile uint8_t OSC2Level;
+volatile uint8_t OSC3Level;
 volatile uint8_t SUBLevel;
 
 volatile uint16_t ADSR1Attack ;

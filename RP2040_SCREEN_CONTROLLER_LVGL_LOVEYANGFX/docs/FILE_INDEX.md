@@ -282,7 +282,7 @@ UI model globals: hide timeout, mixer levels, ADSR1/2 words, manual-cal stage/of
 Param → model router + LVGL label/bar draw helpers + human-readable `paramName` switch.
 
 **Functions**
-- `apply_param_sqr1_level` / `sqr2_level` / `sub_level` — Set OSC/SUB level + `levelBarFlag` 1/2/3.
+- `apply_param_osc1_level` / `osc2_level` / `osc3_level` / `sub_level` — Set OSC/SUB level + `levelBarFlag` 1/2/3 (OSC3 toast only until bar widget exists).
   - **Called from:** **param table only**.
   - **When:** Matching ParamId via `setDisplayParam`.
 - `apply_param_calibration_flag` — `v==0` → signal 2; `v==1` → signal 7; set `signalFlag`.
@@ -326,8 +326,9 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 
 | ParamId | Apply | Side effect |
 |---------|-------|-------------|
-| `PARAM_SQR1_LEVEL` (22) | `apply_param_sqr1_level` | `OSC1Level` + `levelBarFlag=1` |
-| `PARAM_SQR2_LEVEL` (23) | `apply_param_sqr2_level` | `OSC2Level` + `levelBarFlag=2` |
+| `PARAM_OSC1_LEVEL` (22) | `apply_param_osc1_level` | `OSC1Level` + `levelBarFlag=1` |
+| `PARAM_OSC2_LEVEL` (23) | `apply_param_osc2_level` | `OSC2Level` + `levelBarFlag=2` |
+| `PARAM_OSC3_LEVEL` (38) | `apply_param_osc3_level` | `OSC3Level` (no bar yet) |
 | `PARAM_SUB_LEVEL` (24) | `apply_param_sub_level` | `SUBLevel` + `levelBarFlag=3` |
 | `PARAM_CALIBRATION_FLAG` (150) | `apply_param_calibration_flag` | `v==0` → signal 2; `v==1` → signal 7; `signalFlag` |
 | `PARAM_MANUAL_CALIBRATION_FLAG` (151) | `apply_param_manual_calibration_flag` | `v==1` → signal 8; `v==0` → signal 7; `signalFlag` |
@@ -341,12 +342,12 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 
 | ID | ParamId | Display `paramName` / variants | Value remap | Table side-effect |
 |---:|---------|--------------------------------|-------------|-------------------|
-| 1 | `PARAM_SAW_STATUS` | `OSC1 SAW` + OFF/ON | — | — |
-| 2 | `PARAM_SAW2_STATUS` | `OSC2 SAW` + OFF/ON | — | — |
-| 3 | `PARAM_TRI_STATUS` | `OSC1 TRI` + OFF/ON | — | — |
-| 4 | `PARAM_SINE_STATUS` | `OSC1 SIN` + OFF/ON | — | — |
-| 5 | `PARAM_SQR1_STATUS` | `OSC1 SQR` + OFF/ON | — | — |
-| 6 | `PARAM_SQR2_STATUS` | `OSC2 SQR` + OFF/ON | — | — |
+| 1 | `PARAM_OSC1_SAW_ENABLE` | `OSC1 SAW` ON/OFF | — | — |
+| 2 | `PARAM_OSC1_PULSE_ENABLE` | `OSC1 PULSE` ON/OFF | — | — |
+| 3 | `PARAM_OSC1_TRI_ENABLE` | `OSC1 TRI` ON/OFF | — | — |
+| 84–89 | `PARAM_OSC2/3_*_ENABLE` | OSC2/3 Saw/Pulse/Tri | — | — |
+| 4 | `PARAM_SINE_STATUS` | `SINE (unused)` | — | — |
+| 5–6 | *(unused / reserved)* | — | — | — |
 | 7 | `PARAM_RESONANCE_COMPENSATION` | `ResoAmpComp` | — | — |
 | 8 | `PARAM_VCA_ADSR_RESTART` | `ADSR1 Restart` | — | — |
 | 9 | `PARAM_VCF_ADSR_RESTART` | `ADSR2 Restart` | — | — |
@@ -362,8 +363,9 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 19 | `PARAM_VCF_KEYTRACK` | `VCF Keytrack` | — | — |
 | 20 | `PARAM_VELOCITY_TO_VCF` | `Velocity -> VCF` | — | — |
 | 21 | `PARAM_VELOCITY_TO_VCA` | `Velocity -> VCA` | — | — |
-| 22 | `PARAM_SQR1_LEVEL` | `OSC1 Level` | — | yes |
-| 23 | `PARAM_SQR2_LEVEL` | `OSC2 Level` | — | yes |
+| 22 | `PARAM_OSC1_LEVEL` | `OSC1 Level` | — | yes |
+| 23 | `PARAM_OSC2_LEVEL` | `OSC2 Level` | — | yes |
+| 38 | `PARAM_OSC3_LEVEL` | `OSC3 Level` | — | yes |
 | 24 | `PARAM_SUB_LEVEL` | `SUB Level` | — | yes |
 | 25 | `PARAM_CALIBRATION_VALUE` | `CALIBRATION VAL` | — | — |
 | 26 | `PARAM_VOICE_MODE` | MONO / POLY / UNISON | — | — |

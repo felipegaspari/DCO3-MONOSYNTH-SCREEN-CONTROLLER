@@ -13,15 +13,19 @@ using ScreenParamDescriptor = ParamDescriptorT<ScreenParamValueT>;
 // ---------------------------------------------------------------------------
 
 // Mixer levels -> bar values
-static void apply_param_sqr1_level(int32_t v) {
+static void apply_param_osc1_level(int32_t v) {
   OSC1Level    = (uint8_t)v;
   levelBarFlag = 1;
 }
 
-// OSC2 / SQR2 mixer level → bar 2
-static void apply_param_sqr2_level(int32_t v) {
+static void apply_param_osc2_level(int32_t v) {
   OSC2Level    = (uint8_t)v;
   levelBarFlag = 2;
+}
+
+static void apply_param_osc3_level(int32_t v) {
+  OSC3Level    = (uint8_t)v;
+  // No dedicated OSC3 bar widget yet — toast still updates via draw_param_1.
 }
 
 // SUB mixer level → bar 3
@@ -96,8 +100,9 @@ static void apply_param_ui_calibration_menu_mode(int32_t) {
 
 // Parameter descriptor table for the screen controller.
 static const ScreenParamDescriptor screenParamTable[] = {
-  { ParamId::PARAM_SQR1_LEVEL,                     apply_param_sqr1_level                       },
-  { ParamId::PARAM_SQR2_LEVEL,                     apply_param_sqr2_level                       },
+  { ParamId::PARAM_OSC1_LEVEL,                     apply_param_osc1_level                       },
+  { ParamId::PARAM_OSC2_LEVEL,                     apply_param_osc2_level                       },
+  { ParamId::PARAM_OSC3_LEVEL,                     apply_param_osc3_level                       },
   { ParamId::PARAM_SUB_LEVEL,                      apply_param_sub_level                        },
   { ParamId::PARAM_CALIBRATION_FLAG,               apply_param_calibration_flag                 },
   { ParamId::PARAM_MANUAL_CALIBRATION_FLAG,        apply_param_manual_calibration_flag          },
@@ -217,84 +222,35 @@ void setDisplayParam() {
   applyParamToModelAndSignals();
 
   switch (static_cast<ParamId>(paramNumber)) {
-    case ParamId::PARAM_SAW_STATUS:
-      paramName = " OSC1 SAW";
-      switch (paramValue) {
-        case 0:
-          paramName = paramName + " OFF";
-          break;
-        case 1:
-          paramName = paramName + " ON";
-          break;
-        default:
-          break;
-      }
-
+    case ParamId::PARAM_OSC1_SAW_ENABLE:
+      paramName = (paramValue != 0) ? " OSC1 SAW ON" : " OSC1 SAW OFF";
       break;
-    case ParamId::PARAM_SAW2_STATUS:
-      paramName = " OSC2 SAW";
-      switch (paramValue) {
-        case 0:
-          paramName = paramName + " OFF";
-          break;
-        case 1:
-          paramName = paramName + " ON";
-          break;
-        default:
-          break;
-      }
+    case ParamId::PARAM_OSC1_PULSE_ENABLE:
+      paramName = (paramValue != 0) ? " OSC1 PULSE ON" : " OSC1 PULSE OFF";
       break;
-    case ParamId::PARAM_TRI_STATUS:
-      paramName = " OSC1 TRI";
-      switch (paramValue) {
-        case 0:
-          paramName = paramName + " OFF";
-          break;
-        case 1:
-          paramName = paramName + " ON";
-          break;
-        default:
-          break;
-      }
+    case ParamId::PARAM_OSC1_TRI_ENABLE:
+      paramName = (paramValue != 0) ? " OSC1 TRI ON" : " OSC1 TRI OFF";
+      break;
+    case ParamId::PARAM_OSC2_SAW_ENABLE:
+      paramName = (paramValue != 0) ? " OSC2 SAW ON" : " OSC2 SAW OFF";
+      break;
+    case ParamId::PARAM_OSC2_PULSE_ENABLE:
+      paramName = (paramValue != 0) ? " OSC2 PULSE ON" : " OSC2 PULSE OFF";
+      break;
+    case ParamId::PARAM_OSC2_TRI_ENABLE:
+      paramName = (paramValue != 0) ? " OSC2 TRI ON" : " OSC2 TRI OFF";
+      break;
+    case ParamId::PARAM_OSC3_SAW_ENABLE:
+      paramName = (paramValue != 0) ? " OSC3 SAW ON" : " OSC3 SAW OFF";
+      break;
+    case ParamId::PARAM_OSC3_PULSE_ENABLE:
+      paramName = (paramValue != 0) ? " OSC3 PULSE ON" : " OSC3 PULSE OFF";
+      break;
+    case ParamId::PARAM_OSC3_TRI_ENABLE:
+      paramName = (paramValue != 0) ? " OSC3 TRI ON" : " OSC3 TRI OFF";
       break;
     case ParamId::PARAM_SINE_STATUS:
-      paramName = " OSC1 SIN";
-      switch (paramValue) {
-        case 0:
-          paramName = paramName + " OFF";
-          break;
-        case 1:
-          paramName = paramName + " ON";
-          break;
-        default:
-          break;
-      }
-      break;
-    case ParamId::PARAM_SQR1_STATUS:
-      paramName = " OSC1 SQR";
-      switch (paramValue) {
-        case 0:
-          paramName = paramName + " OFF";
-          break;
-        case 1:
-          paramName = paramName + " ON";
-          break;
-        default:
-          break;
-      }
-      break;
-    case ParamId::PARAM_SQR2_STATUS:
-      paramName = " OSC2 SQR";
-      switch (paramValue) {
-        case 0:
-          paramName = paramName + " OFF";
-          break;
-        case 1:
-          paramName = paramName + " ON";
-          break;
-        default:
-          break;
-      }
+      paramName = " SINE (unused)";
       break;
     case ParamId::PARAM_RESONANCE_COMPENSATION:
       paramName = " ResoAmpComp";
@@ -374,11 +330,14 @@ void setDisplayParam() {
     case ParamId::PARAM_VELOCITY_TO_VCA:
       paramName = " Velocity -> VCA";
       break;
-    case ParamId::PARAM_SQR1_LEVEL:
+    case ParamId::PARAM_OSC1_LEVEL:
       paramName = " OSC1 Level";
       break;
-    case ParamId::PARAM_SQR2_LEVEL:
+    case ParamId::PARAM_OSC2_LEVEL:
       paramName = " OSC2 Level";
+      break;
+    case ParamId::PARAM_OSC3_LEVEL:
+      paramName = " OSC3 Level";
       break;
     case ParamId::PARAM_SUB_LEVEL:
       paramName = " SUB Level";
@@ -713,8 +672,7 @@ void setDisplayParam() {
   TG_SAW2, 2
   TG_TRI, 3
   TG_SIN, 4
-  TG_SQR1, 5
-  TG_SQR2, 6
+  // 5, 6 unused (were TG_SQR1/SQR2 → PARAM_SQR*_STATUS)
   TG_RESO_AMP_COMP, 7
   TG_ADSR1_RESTART, 8
   TG_ADSR2_RESTART, 9
