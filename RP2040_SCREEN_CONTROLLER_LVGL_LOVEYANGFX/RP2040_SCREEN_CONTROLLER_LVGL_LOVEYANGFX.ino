@@ -97,9 +97,10 @@ void setup() {
 
   Serial1.setRX(13);
   Serial1.setTX(12);
-  Serial1.setPollingMode(true);
+  Serial1.setPollingMode(false);
   Serial1.setFIFOSize(512);
   Serial1.begin(2500000);
+  init_screen_serial();
 
   // USBDevice.setManufacturerDescriptor("FELA         ");   /// Why doesnt it work?
   // USBDevice.setProductDescriptor("DCO4 Screen Controller       ");

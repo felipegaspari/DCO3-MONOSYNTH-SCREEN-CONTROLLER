@@ -36,7 +36,7 @@ enum ParamId : uint8_t {
   PARAM_OSC2_INTERVAL            = 14,  // OSC2Interval / OSC2_interval
 
   PARAM_OSC2_DETUNE_VAL          = 15,  // OSC2Detune / OSC2DetuneVal
-  PARAM_LFO2_TO_DETUNE2          = 16,  // LFO2toOSC2DETUNE / LFO2toDETUNE2
+  PARAM_LFO2_TO_OSC2              = 16,  // LFO2toOSC2DETUNE
 
   PARAM_OSC_SYNC_MODE            = 17,  // oscSyncMode / oscSync
 
@@ -71,7 +71,7 @@ enum ParamId : uint8_t {
   // DCO3 monosynth OSC3 (match DCO / Input)
   PARAM_OSC3_INTERVAL            = 33,  // OSC3Interval / OSC3_interval
   PARAM_OSC3_DETUNE_VAL          = 34,  // OSC3Detune / OSC3DetuneVal
-  PARAM_LFO2_TO_DETUNE3          = 35,  // LFO2toOSC3DETUNE / LFO2toDETUNE3
+  PARAM_LFO2_TO_OSC3              = 35,  // LFO2toOSC3DETUNE
 
   // --- LFO routing (shared) -----------------------------------------
   PARAM_LFO1_TO_DCO              = 40,
@@ -166,6 +166,17 @@ enum ParamId : uint8_t {
   PARAM_LFO3_WAVEFORM            = 212, // "LFO3 Shape" (future)
   PARAM_ADSR3_RESTART            = 214, // "ADSR3 Restart" (future)
   PARAM_VCA_LEVEL_ALT            = 215, // second VCA level mapping (screen-only)
+
+  PARAM_LFO1_TO_OSC1             = 216,
+  PARAM_LFO1_TO_OSC2             = 217,
+  PARAM_LFO1_TO_OSC3             = 218,
+  PARAM_LFO2_TO_OSC2_COARSE      = 219,
+  PARAM_LFO2_TO_OSC3_COARSE      = 220,
+
+  PARAM_ADSR1_TO_VCA             = 222,
+
+  // EnvDCO → pitch tap: 0 unipolar (default), 1 centered (env−16384; mid S ≈ note).
+  PARAM_ADSR3_PITCH_MODE         = 223,
 
   // --- Calibration flags (shared) ----------------------------------
   PARAM_CALIBRATION_FLAG         = 150,

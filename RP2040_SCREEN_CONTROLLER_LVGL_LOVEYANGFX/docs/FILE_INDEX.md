@@ -96,7 +96,7 @@ Main sketch: dual-core split — Core0 UART RX, Core1 LVGL UI. Defines `ScreenMo
 - `my_tick_get_cb()` — Return `millis()` for LVGL tick.
   - **Called from:** LVGL via `lv_tick_set_cb` (registered in `setup1`).
   - **When:** LVGL internal timing.
-- `setup()` — USB Serial @ 1 000 000; Serial1 RX13/TX12 (only peer link; TX12 configured in firmware but unconnected — receive-only) @ 2 500 000, polling, FIFO 512.
+- `setup()` — USB Serial @ 1 000 000; Serial1 RX13/TX12 (only peer link; TX12 configured in firmware but unconnected — receive-only) @ 2 500 000, IRQ, FIFO 512; `init_screen_serial()`.
   - **Called from:** Arduino framework (Core 0).
   - **When:** Boot Core0 once.
 - `setup1()` — `lv_init`; LovyanGFX `tft.begin` / rotation 3; create partial buffer display + flush cb; pointer indev + touch cb; tick cb; `ui_init`; speed up `ui_PresetNewName` anim times.
@@ -151,44 +151,46 @@ TinyUSB device configuration (MIT header). Sketch does **not** include TinyUSB /
 
 ### `Serial.h`
 
-Externs for shared volatile UI/serial state (`presetNumber`, `paramNumber`/`paramValue`, ADSR/signal/char/level flags, `presetNameBytes`). Declares `serial_read_n()` (the sketch’s only UART pump). Includes parser/protocol headers. Stale SIGNAL LIST comment in footer (superseded by `ScreenMode`). **No function definitions.**
+Externs for shared volatile UI/serial state (`presetNumber`, `paramNumber`/`paramValue`, ADSR/signal/char/level flags, `presetNameBytes`). Declares `serial_read_n()` / `init_screen_serial()`. `#define SERIAL_INNER_MAX_PAYLOAD 17` then includes slim framing headers. Commented `SERIAL_FRAMING_COBS`. Stale SIGNAL LIST comment in footer (superseded by `ScreenMode`). **No function definitions.**
 
 ### `Serial.ino`
 
-State definitions + the single UART parser (Serial1 = Input→Screen; Input is the only peer and relays the DCO gap `'x'` 154).
+State definitions + slim LUT parser (Serial1 = Input→Screen; Input is the only peer and relays the DCO gap `'x'` 154).
 
 **Functions**
-- `screenSerial1_handle_adsr1` — `'a'`: load ADSR1 A/D/S/R words → `updateADSR1Flag`.
+- `screenSerial1_handle_adsr1` — `'a'`: load ADSR1 A/D/S/R **LE** → `updateADSR1Flag`.
   - **Called from:** Serial1 parser.
   - **When:** Input `'a'`.
-- `screenSerial1_handle_adsr2` — `'b'`: load ADSR2 → `updateADSR2Flag`.
+- `screenSerial1_handle_adsr2` — `'b'`: load ADSR2 LE → `updateADSR2Flag`.
   - **Called from:** Serial1 parser.
   - **When:** Input `'b'`.
 - `screenSerial1_apply_param_from_frame` — Shared: `setDisplayParam`; set `paramChangeFlag` unless `serialSignal == 6` (Silent).
   - **Called from:** Serial1 `'p'`/`'w'`/`'x'` handlers.
   - **When:** Input param frames.
-- `screenSerial1_handle_param16` — Decode `'p'` → apply helper.
+- `screenSerial1_handle_param16` — Decode slim `'p'` (3 B LE) → apply helper.
   - **Called from:** Serial1 parser.
   - **When:** Input `'p'`.
-- `screenSerial1_handle_param8` — Decode `'w'`; **ignore** manual cal stage/offset IDs (those use `'y'`); reinterpret value as unsigned 0..255 → apply.
+- `screenSerial1_handle_param8` — Decode `'w'` (2 B); **ignore** manual cal stage/offset IDs (those use `'y'`); reinterpret value as unsigned 0..255 → apply.
   - **Called from:** Serial1 parser.
   - **When:** Input `'w'`.
-- `screenSerial1_handle_param32` — Decode `'x'` → apply.
+- `screenSerial1_handle_param32` — Decode slim `'x'` (5 B LE) → apply.
   - **Called from:** Serial1 parser.
   - **When:** Input `'x'` — including the DCO calibration gap (154) that Input relays verbatim.
 - `screenSerial1_handle_param_nav_byte` — `'y'`: id + int8 → `updateParameters`; set `paramChangeFlag` for ids 150..155.
   - **Called from:** Serial1 parser.
   - **When:** Input `'y'`.
-- `screenSerial1_handle_preset_scroll` — `'q'`: preset # + 16 chars + finish → `presetScrollFlag`.
+- `screenSerial1_handle_preset_scroll` — `'q'`: preset # + 16 chars → `presetScrollFlag`.
   - **Called from:** Serial1 parser.
-  - **When:** Input `'q'` (18-byte payload).
+  - **When:** Input `'q'` (17-byte payload).
 - `screenSerial1_handle_signal` — `'s'`: `serialSignal` + `signalFlag`.
   - **Called from:** Serial1 parser.
   - **When:** Input `'s'`.
 - `screenSerial1_handle_char_select` — `'c'`: char index flags.
   - **Called from:** Serial1 parser.
   - **When:** Input `'c'`.
-- `serial_read_n()` — Timeout + drain Serial1 into parser.
+- `init_screen_serial()` — Fill `screenSerial1Lut` from `screenSerial1Commands[]`.
+  - **Called from:** `setup()` after `Serial1.begin`.
+- `serial_read_n()` — `serial_parser_drain` Serial1 (budget 64) every Core0 `loop()`.
   - **Called from:** `loop()` every iteration.
   - **When:** Every `loop` (Core0).
 
@@ -200,57 +202,53 @@ Command / length inventory for the link is tabulated below (built from `screenSe
 
 | Constant | Value | Layout |
 |----------|------:|--------|
-| `SCREEN_SERIAL_LEN_PARAM_16` | 4 | `[id, hi, lo, finish]` |
-| `SCREEN_SERIAL_LEN_PARAM_8` | 3 | `[id, int8, finish]` |
-| `SCREEN_SERIAL_LEN_PARAM_32` | 6 | `[id, b0..b3, finish]` |
-| `SCREEN_SERIAL1_LEN_PRESET_SCROLL` | 18 | `[preset#, 16 chars, finish]` |
+| `SCREEN_SERIAL_LEN_PARAM_16` | 3 | `[id, i16 LE]` |
+| `SCREEN_SERIAL_LEN_PARAM_8` | 2 | `[id, u8]` |
+| `SCREEN_SERIAL_LEN_PARAM_32` | 5 | `[id, u32 LE]` |
+| `SCREEN_SERIAL1_LEN_PRESET_SCROLL` | 17 | `[preset#, 16 chars]` |
 | `SCREEN_SERIAL_LEN_SIGNAL` | 1 | `[signal]` |
 | `SCREEN_SERIAL_LEN_CHAR_SELECT` | 1 | `[char index]` |
-| `SCREEN_SERIAL_LEN_ADSR_BLOCK` | 8 | ADSR A/D/S/R words |
-| `SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV` | 3 | `'y'`: `[paramId, value, finish]` |
+| `SCREEN_SERIAL_LEN_ADSR_BLOCK` | 8 | ADSR A/D/S/R u16 LE |
+| `SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV` | 2 | `'y'`: `[paramId, value]` |
 
 #### Serial1 command table (`screenSerial1Commands[]` — Input → Screen)
 
 | Cmd | Handler | Length const | Effect |
 |-----|---------|--------------|--------|
-| `'a'` | `screenSerial1_handle_adsr1` | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | ADSR1 words → `updateADSR1Flag` |
-| `'b'` | `screenSerial1_handle_adsr2` | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | ADSR2 words → `updateADSR2Flag` |
+| `'a'` | `screenSerial1_handle_adsr1` | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | ADSR1 LE → `updateADSR1Flag` |
+| `'b'` | `screenSerial1_handle_adsr2` | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | ADSR2 LE → `updateADSR2Flag` |
 | `'p'` | `screenSerial1_handle_param16` | `SCREEN_SERIAL_LEN_PARAM_16` | → `screenSerial1_apply_param_from_frame` |
 | `'w'` | `screenSerial1_handle_param8` | `SCREEN_SERIAL_LEN_PARAM_8` | Ignore ids 152/153; else reinterpret u8 → apply |
 | `'x'` | `screenSerial1_handle_param32` | `SCREEN_SERIAL_LEN_PARAM_32` | → apply helper |
 | `'y'` | `screenSerial1_handle_param_nav_byte` | `SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV` | → `updateParameters`; flag for ids 150..155 |
-| `'q'` | `screenSerial1_handle_preset_scroll` | `SCREEN_SERIAL1_LEN_PRESET_SCROLL` | Preset # + 16 chars + finish → `presetScrollFlag` |
+| `'q'` | `screenSerial1_handle_preset_scroll` | `SCREEN_SERIAL1_LEN_PRESET_SCROLL` | Preset # + 16 chars → `presetScrollFlag` |
 | `'s'` | `screenSerial1_handle_signal` | `SCREEN_SERIAL_LEN_SIGNAL` | `serialSignal` + `signalFlag` |
 | `'c'` | `screenSerial1_handle_char_select` | `SCREEN_SERIAL_LEN_CHAR_SELECT` | `presetChar` + `presetCharFlag` |
 
+### `serial_frame.h`
+
+Copied from DCO. Inner pack/unpack + optional COBS. `SERIAL_INNER_MAX_PAYLOAD` 17 via `Serial.h`. Default RAW.
+
 ### `serial_parser.h`
 
-Generic non-blocking frame parser (`SERIAL_MAX_PAYLOAD` 18 for screen `'q'` frames).
+Copied from DCO. O(1) LUT + 500 µs idle timeout + `serial_parser_drain` budget 64.
 
 **Functions**
-- `serial_parser_reset()` — Clear context to wait-for-cmd.
-  - **Called from:** `serial_parser_check_timeout`; `serial_parser_process_byte`.
-  - **When:** Timeout or frame complete.
-- `serial_parser_find_cmd()` — Lookup command def.
-  - **Called from:** `serial_parser_process_byte`.
-  - **When:** First byte of frame.
-- `serial_parser_check_timeout()` — Drop stale partial frames (5 ms).
-  - **Called from:** `serial_read_n`.
-  - **When:** Before draining UART if mid-payload.
-- `serial_parser_process_byte()` — State machine; invoke `on_frame` when complete.
-  - **Called from:** `serial_read_n`.
-  - **When:** Each RX byte.
+- `serial_parser_reset()` / `serial_command_table_init()` / `serial_parser_check_timeout()` / `serial_parser_process_byte()` / `serial_parser_drain()`.
+  - **Called from:** `init_screen_serial`; `serial_read_n`.
 
 ### `serial_param_protocol.h`
 
+LE encode/decode for `'p'`/`'w'`/`'x'`.
+
 **Functions**
-- `decode_i16_be()` — Big-endian int16.
-  - **Called from:** `decode_param_p`.
-- `decode_i32_le()` — Little-endian int32.
-  - **Called from:** `decode_param_x`.
-- `decode_param_p()` / `decode_param_w()` / `decode_param_x()` — Fill `ParamFrame`.
+- `decode_u16_le()` / `decode_param_p()` / `decode_param_w()` / `decode_param_x()`.
   - **Called from:** Serial handlers in `Serial.ino`.
-  - **When:** Param frames `'p'`/`'w'`/`'x'`.
+  - **When:** Param frames `'p'`/`'w'`/`'x'`; ADSR `'a'`/`'b'`.
+
+### `serial_input_protocol.h`
+
+Copied from DCO (DCO-link sizes). Screen LUT uses its own lengths for Screen-only cmds (`'w'`/`'y'`/`'q'` 17/`'s'`/`'c'`).
 
 ### `param_router.h`
 
@@ -357,7 +355,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 13 | `PARAM_OSC1_INTERVAL` | `Octave` | `(v-36)/12` | — |
 | 14 | `PARAM_OSC2_INTERVAL` | `OSC2 Interval` | `v-=36` | — |
 | 15 | `PARAM_OSC2_DETUNE_VAL` | `OSC2 Detune` | `v-=256` | — |
-| 16 | `PARAM_LFO2_TO_DETUNE2` | `LFO2->OSC2 Pitch` | — | — |
+| 16 | `PARAM_LFO2_TO_OSC2` | `LFO2->OSC2 Pitch` | — | — |
 | 17 | `PARAM_OSC_SYNC_MODE` | `OscPhaseSync` | — | — |
 | 18 | `PARAM_PORTAMENTO_TIME` | `Portamento` | — | — |
 | 19 | `PARAM_VCF_KEYTRACK` | `VCF Keytrack` | — | — |
@@ -405,6 +403,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 199 | `PARAM_UI_CALIBRATION_DISMISS` | *(no toast; side-effect only)* | — | yes |
 | 200 | `PARAM_UI_CALIBRATION_MENU_MODE` | *(no toast; side-effect only)* | — | yes |
 | 210 | `PARAM_PW_VALUE` | `PW` | — | — |
+| 222 | `PARAM_ADSR1_TO_VCA` | `ADSR1 -> VCA` | — | — |
 | 211 | `PARAM_LFO3_SPEED` | `LFO3 Speed` | — | — |
 | 212 | `PARAM_LFO3_WAVEFORM` | `LFO3 Shape` | — | — |
 | 214 | `PARAM_ADSR3_RESTART` | `ADSR3 Restart` | — | — |
@@ -535,7 +534,7 @@ Unused **inside this sketch folder:** `fela_U8g2/`, `src/felanew_U8g2/`, `ui.ino
 | Goal | Start here |
 |------|------------|
 | Boot / dual-core split | `RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX.ino` (`setup` / `setup1` / `loop` / `loop1`) |
-| UART pins / baud | `setup()` Serial1 RX13/TX12 @ 2.5 M |
+| UART pins / baud | `setup()` Serial1 RX13/TX12 @ 2.5 M IRQ |
 | ScreenMode / signal 1–8 | `ScreenMode` enum + `handleScreenModeChange`; RX `'s'` handlers in `Serial.ino` |
 | Serial1 (Input) RX commands | `screenSerial1Commands[]` table in this file + handlers in `Serial.ino` |
 | Param display names / remaps | `setDisplayParam()` catalog in this file; switch in `displayParams.ino` |

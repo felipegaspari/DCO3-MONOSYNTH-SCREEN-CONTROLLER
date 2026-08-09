@@ -1,10 +1,18 @@
 #ifndef __SERIAL_H__
 #define __SERIAL_H__
 
-#include "serial_param_protocol.h"
+// #define SERIAL_FRAMING_COBS  // must match DCO/Input; host: dco_control --cobs
+
+// Preset-scroll 'q' is [preset#][16 chars] = 17. DCO/Input default is 8.
+#define SERIAL_INNER_MAX_PAYLOAD 17
+
+#include "serial_input_protocol.h"
+#include "serial_frame.h"
 #include "serial_parser.h"
+#include "serial_param_protocol.h"
 
 void serial_read_n();
+void init_screen_serial();
 
 extern volatile byte    presetNumber;
 extern String           presetNameString;

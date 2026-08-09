@@ -301,7 +301,7 @@ void setDisplayParam() {
       paramName = " OSC2 Detune";
       paramValue -= 256;
       break;
-    case ParamId::PARAM_LFO2_TO_DETUNE2:
+    case ParamId::PARAM_LFO2_TO_OSC2:
       paramName = " LFO2->OSC2 Pitch";
       break;
     case ParamId::PARAM_OSC3_INTERVAL:
@@ -312,7 +312,7 @@ void setDisplayParam() {
       paramName = " OSC3 Detune";
       paramValue -= 256;
       break;
-    case ParamId::PARAM_LFO2_TO_DETUNE3:
+    case ParamId::PARAM_LFO2_TO_OSC3:
       paramName = " LFO2->OSC3 Pitch";
       break;
     case ParamId::PARAM_OSC_SYNC_MODE:
@@ -600,6 +600,9 @@ void setDisplayParam() {
 
     case ParamId::PARAM_PW_VALUE:
       paramName = " PW";
+      break;
+    case ParamId::PARAM_ADSR1_TO_VCA:
+      paramName = " ADSR1 -> VCA";
       break;
     case ParamId::PARAM_LFO3_SPEED:
       paramName = " LFO3 Speed";

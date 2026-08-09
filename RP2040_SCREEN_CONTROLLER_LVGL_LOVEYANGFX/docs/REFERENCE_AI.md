@@ -24,7 +24,7 @@ Display-only: touch callback is empty.
 
 ## Runtime model
 
-**Core 0:** open UARTs; forever `serial_read_n` (Serial1, RX-only — RX GP13 is fed by Input, and TX GP12 is unconnected); set volatiles/flags.
+**Core 0:** open Serial1 IRQ + `init_screen_serial`; forever `serial_read_n` (slim LUT drain, RX-only — RX GP13 is fed by Input, and TX GP12 is unconnected); set volatiles/flags.
 
 **Core 1:** LVGL + LovyanGFX; consume flags; update widgets; `lv_timer_handler()`.
 
@@ -37,10 +37,10 @@ Do not call LVGL from Core0 or UART parsers from Core1.
 | File | Role |
 |------|------|
 | Main `.ino` | Dual-core entry, flush, ScreenMode helpers, UI update orchestration |
-| `Serial.ino` | Serial1 parser + handlers |
+| `Serial.ino` | Serial1 slim LUT parser + handlers (LE, no finish) |
 | `displayParams.ino` | Param→label/model, draw helpers |
 | `parameters.ino` | `'y'` nav apply |
-| `serial_*.h`, `params_def.h`, `param_router.h` | Shared-style protocol |
+| `serial_frame.h` / `serial_parser.h` / `serial_param_protocol.h` / `params_def.h` | Shared slim protocol (max payload 17) |
 | `timers_millis.*` | Soft timers (used lightly) |
 | `auxiliary.*` | Blink helpers (**unused** in live loop) |
 

@@ -35,15 +35,14 @@ void updateParameters(byte paramNumberNavigation, int32_t paramValueNavigation);
 // Input is the only peer: it sends UI frames and relays the DCO gap 'x' (154).
 // ---------------------------------------------------------------------------
 
-// Payload length constants for this board's link.
-static const uint8_t SCREEN_SERIAL_LEN_PARAM_16          = 4;   // [id, hi, lo, finish]
-static const uint8_t SCREEN_SERIAL_LEN_PARAM_8           = 3;   // [id, int8, finish]
-static const uint8_t SCREEN_SERIAL_LEN_PARAM_32          = 6;   // [id, b0..b3, finish]
-static const uint8_t SCREEN_SERIAL1_LEN_PRESET_SCROLL    = 18;  // [preset#, 16 chars, finish]
+static const uint8_t SCREEN_SERIAL_LEN_PARAM_16          = 3;   // [id, i16 LE]
+static const uint8_t SCREEN_SERIAL_LEN_PARAM_8           = 2;   // [id, u8]
+static const uint8_t SCREEN_SERIAL_LEN_PARAM_32          = 5;   // [id, u32 LE]
+static const uint8_t SCREEN_SERIAL1_LEN_PRESET_SCROLL    = 17;  // [preset#, 16 chars]
 static const uint8_t SCREEN_SERIAL_LEN_SIGNAL            = 1;   // [signal]
 static const uint8_t SCREEN_SERIAL_LEN_CHAR_SELECT       = 1;   // [char index]
-static const uint8_t SCREEN_SERIAL_LEN_ADSR_BLOCK        = 8;   // [A_hi, A_lo, D_hi, D_lo, S_hi, S_lo, R_hi, R_lo]
-static const uint8_t SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV = 3;   // 'y': [paramId, value, finish]
+static const uint8_t SCREEN_SERIAL_LEN_ADSR_BLOCK        = 8;   // 4×u16 LE
+static const uint8_t SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV = 2;   // 'y': [paramId, value]
 
 // ---------------------------
 // Serial1 (input -> screen)
@@ -55,10 +54,10 @@ static void screenSerial1_handle_adsr1(char, const uint8_t* payload, uint8_t len
     return;
   }
 
-  ADSR1Attack  = word(payload[0], payload[1]);
-  ADSR1Decay   = word(payload[2], payload[3]);
-  ADSR1Sustain = word(payload[4], payload[5]);
-  ADSR1Release = word(payload[6], payload[7]);
+  ADSR1Attack  = decode_u16_le(payload + 0);
+  ADSR1Decay   = decode_u16_le(payload + 2);
+  ADSR1Sustain = decode_u16_le(payload + 4);
+  ADSR1Release = decode_u16_le(payload + 6);
 
   updateADSR1Flag = true;
 }
@@ -69,10 +68,10 @@ static void screenSerial1_handle_adsr2(char, const uint8_t* payload, uint8_t len
     return;
   }
 
-  ADSR2Attack  = word(payload[0], payload[1]);
-  ADSR2Decay   = word(payload[2], payload[3]);
-  ADSR2Sustain = word(payload[4], payload[5]);
-  ADSR2Release = word(payload[6], payload[7]);
+  ADSR2Attack  = decode_u16_le(payload + 0);
+  ADSR2Decay   = decode_u16_le(payload + 2);
+  ADSR2Sustain = decode_u16_le(payload + 4);
+  ADSR2Release = decode_u16_le(payload + 6);
 
   updateADSR2Flag = true;
 }
@@ -125,7 +124,7 @@ static void screenSerial1_handle_param8(char, const uint8_t* payload, uint8_t le
   screenSerial1_apply_param_from_frame(frame);
 }
 
-// 'x' : PARAM 32-bit from input controller (reserved / rarely used).
+// 'x' : PARAM 32-bit from input controller (gap 154 relayed from DCO).
 static void screenSerial1_handle_param32(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_PARAM_32) {
     return;
@@ -136,7 +135,7 @@ static void screenSerial1_handle_param32(char, const uint8_t* payload, uint8_t l
 }
 
 // 'y' : small navigation / calibration param from input controller.
-// payload: [paramId, value (int8), finish]
+// payload: [paramId, value]
 static void screenSerial1_handle_param_nav_byte(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV) {
     return;
@@ -144,7 +143,6 @@ static void screenSerial1_handle_param_nav_byte(char, const uint8_t* payload, ui
 
   byte id    = payload[0];
   int8_t val = (int8_t)payload[1];
-  // payload[2] is finishByte; we ignore its value here.
 
   paramNumber = id;
   paramValue  = (int16_t)val;
@@ -161,7 +159,7 @@ static void screenSerial1_handle_param_nav_byte(char, const uint8_t* payload, ui
 }
 
 // 'q' : preset scroll from input controller.
-// payload: [presetNumber, 16 chars, finishByte]
+// payload: [presetNumber, 16 chars]
 static void screenSerial1_handle_preset_scroll(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL1_LEN_PRESET_SCROLL) {
     return;
@@ -188,9 +186,6 @@ static void screenSerial1_handle_signal(char, const uint8_t* payload, uint8_t le
   }
   serialSignal = payload[0];
   signalFlag   = true;
-  // Debug: log incoming signals on Serial1
-  // Serial.print("Screen Serial1 signal: ");
-  // Serial.println(serialSignal);
 }
 
 // 'c' : preset char index from input controller.
@@ -202,7 +197,6 @@ static void screenSerial1_handle_char_select(char, const uint8_t* payload, uint8
   presetCharFlag = true;
 }
 
-// Command table and parser context for Serial1.
 static const SerialCommandDef screenSerial1Commands[] = {
   { 'a', SCREEN_SERIAL_LEN_ADSR_BLOCK,        screenSerial1_handle_adsr1          },
   { 'b', SCREEN_SERIAL_LEN_ADSR_BLOCK,        screenSerial1_handle_adsr2          },
@@ -215,35 +209,18 @@ static const SerialCommandDef screenSerial1Commands[] = {
   { 'c', SCREEN_SERIAL_LEN_CHAR_SELECT,       screenSerial1_handle_char_select    },
 };
 
-static SerialParserContext screenSerial1Parser = {
-  SERIAL_WAIT_FOR_CMD,
-  0,
-  nullptr,
-  {0},
-  0,
-  0,
-  0
-};
+static SerialCommandTable screenSerial1Lut;
+static SerialParserContext screenSerial1Parser = {};
+
+void init_screen_serial() {
+  serial_command_table_init(
+    screenSerial1Lut,
+    screenSerial1Commands,
+    sizeof(screenSerial1Commands) / sizeof(screenSerial1Commands[0])
+  );
+}
 
 // Core0: non-blocking Input Serial1 parser pump.
 void serial_read_n() {
-  // Expire any stale partial frame.
-  if (screenSerial1Parser.state == SERIAL_READ_PAYLOAD) {
-    uint32_t now = micros();
-    serial_parser_check_timeout(screenSerial1Parser, now);
-  }
-
-  if (Serial1.available() > 0) {
-    uint32_t now = micros();  // one timestamp per batch is enough
-    while (Serial1.available() > 0) {
-      uint8_t b = Serial1.read();
-      serial_parser_process_byte(
-        screenSerial1Parser,
-        screenSerial1Commands,
-        sizeof(screenSerial1Commands) / sizeof(screenSerial1Commands[0]),
-        b,
-        now
-      );
-    }
-  }
+  serial_parser_drain(screenSerial1Parser, screenSerial1Lut, Serial1, SERIAL_DRAIN_BYTE_BUDGET);
 }

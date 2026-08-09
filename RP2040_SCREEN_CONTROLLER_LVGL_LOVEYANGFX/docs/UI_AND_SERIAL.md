@@ -52,14 +52,14 @@ Only peer link (RX GP13, TX GP12, 2.5 Mbaud). The Screen never transmits on it: 
 
 | Cmd | Role |
 |-----|------|
-| `'a'` / `'b'` | ADSR1/2 raw blocks → bar model + flags |
-| `'p'` / `'w'` / `'x'` | ParamId → `setDisplayParam` / levels / cal. Calibration gap (`PARAM_GAP_FROM_DCO` 154) arrives as `'x'`: produced by the DCO and relayed verbatim by Input |
-| `'y'` | Nav byte → `updateParameters` (cal stage/offset) |
-| `'q'` | Preset scroll: number + **16** chars + finish (18-byte payload) |
+| `'a'` / `'b'` | ADSR1/2 raw blocks **LE** → bar model + flags |
+| `'p'` / `'w'` / `'x'` | ParamId → `setDisplayParam` / levels / cal. `'p'` = 3 B LE; `'w'` = 2 B; `'x'` = 5 B LE. Gap (`PARAM_GAP_FROM_DCO` 154) arrives as slim `'x'` relayed by Input |
+| `'y'` | Nav `[id][u8]` → `updateParameters` (cal stage/offset) |
+| `'q'` | Preset scroll: number + **16** chars (17-byte payload, no finish) |
 | `'s'` | Mode signal → `serialSignal` + `signalFlag` |
 | `'c'` | Char index for name edit |
 
-Exact lengths: constants at top of `Serial.ino`.
+Exact lengths: constants at top of `Serial.ino`. Core0 drains every `loop()` via `serial_parser_drain` (budget 64).
 
 ---
 
