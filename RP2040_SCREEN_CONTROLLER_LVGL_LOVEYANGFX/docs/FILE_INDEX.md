@@ -403,11 +403,18 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 199 | `PARAM_UI_CALIBRATION_DISMISS` | *(no toast; side-effect only)* | — | yes |
 | 200 | `PARAM_UI_CALIBRATION_MENU_MODE` | *(no toast; side-effect only)* | — | yes |
 | 210 | `PARAM_PW_VALUE` | `PW` | — | — |
-| 222 | `PARAM_ADSR1_TO_VCA` | `ADSR1 -> VCA` | — | — |
 | 211 | `PARAM_LFO3_SPEED` | `LFO3 Speed` | — | — |
 | 212 | `PARAM_LFO3_WAVEFORM` | `LFO3 Shape` | — | — |
 | 214 | `PARAM_ADSR3_RESTART` | `ADSR3 Restart` | — | — |
 | 215 | `PARAM_VCA_LEVEL_ALT` | `VCA -> LEVEL` | — | — |
+| 216 | `PARAM_LFO1_TO_OSC1` | `LFO1 -> OSC1 extra` | — | — |
+| 217 | `PARAM_LFO1_TO_OSC2` | `LFO1 -> OSC2 extra` | — | — |
+| 218 | `PARAM_LFO1_TO_OSC3` | `LFO1 -> OSC3 extra` | — | — |
+| 219 | `PARAM_LFO2_TO_OSC2_COARSE` | `LFO2 -> OSC2 coarse` | — | — |
+| 220 | `PARAM_LFO2_TO_OSC3_COARSE` | `LFO2 -> OSC3 coarse` | — | — |
+| 221 | `PARAM_CHARACTER` | `Character` | — | — |
+| 222 | `PARAM_ADSR1_TO_VCA` | `ADSR1 -> VCA` | — | — |
+| 223 | `PARAM_ADSR3_PITCH_MODE` | `EnvDCO pitch centered` | — | — |
 
 **In `params_def.h` but no `setDisplayParam` case (no display label):**
 

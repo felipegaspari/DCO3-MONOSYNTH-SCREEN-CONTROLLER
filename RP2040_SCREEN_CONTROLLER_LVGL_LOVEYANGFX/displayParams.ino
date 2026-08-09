@@ -616,6 +616,27 @@ void setDisplayParam() {
     case ParamId::PARAM_VCA_LEVEL_ALT:
       paramName = " VCA -> LEVEL";
       break;
+    case ParamId::PARAM_LFO1_TO_OSC1:
+      paramName = " LFO1 -> OSC1 extra";
+      break;
+    case ParamId::PARAM_LFO1_TO_OSC2:
+      paramName = " LFO1 -> OSC2 extra";
+      break;
+    case ParamId::PARAM_LFO1_TO_OSC3:
+      paramName = " LFO1 -> OSC3 extra";
+      break;
+    case ParamId::PARAM_LFO2_TO_OSC2_COARSE:
+      paramName = " LFO2 -> OSC2 coarse";
+      break;
+    case ParamId::PARAM_LFO2_TO_OSC3_COARSE:
+      paramName = " LFO2 -> OSC3 coarse";
+      break;
+    case ParamId::PARAM_CHARACTER:
+      paramName = " Character";
+      break;
+    case ParamId::PARAM_ADSR3_PITCH_MODE:
+      paramName = " EnvDCO pitch centered";
+      break;
 
     default:
       break;
