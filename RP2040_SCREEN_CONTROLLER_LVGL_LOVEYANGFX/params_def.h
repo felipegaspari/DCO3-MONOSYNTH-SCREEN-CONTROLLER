@@ -173,6 +173,9 @@ enum ParamId : uint8_t {
   PARAM_LFO2_TO_OSC2_COARSE      = 219,
   PARAM_LFO2_TO_OSC3_COARSE      = 220,
 
+  // Character amount (0..128).
+  PARAM_CHARACTER                = 221,
+
   PARAM_ADSR1_TO_VCA             = 222,
 
   // EnvDCO → pitch tap: 0 unipolar (default), 1 centered ((env−16384)<<1; mid S ≈ note, ±2 oct @ full CW).
