@@ -16,17 +16,38 @@ enum class CalTopology : uint8_t {
   Voices4x2       // 8 osc x 1 stage,  stage 0..7, WAVEFORM = DCO chip A/B
 };
 
-// Compile-time selection, overridable with -DSCREEN_CAL_TOPOLOGY_DEFAULT=...
-// Phase 2 replaces the accessor body with the value the synth announces over
-// the serial link, at which point this becomes a pre-announcement fallback and
-// the same binary serves both projects.
-#ifndef SCREEN_CAL_TOPOLOGY_DEFAULT
-#define SCREEN_CAL_TOPOLOGY_DEFAULT CalTopology::Monosynth3Osc
+// Pre-announcement fallback only, overridable with -DSCREEN_CAL_TOPOLOGY_DEFAULT=...
+// The Input announces the real topology over 'y' (PARAM_UI_VOICE_TOPOLOGY,
+// see Serial.ino) at boot and at manual-calibration entry, so this value is
+// only live for the brief window before that first message arrives — or for as
+// long as a screen is powered up with no Input attached, on the bench.
+//
+// project_config.h is a symlink to the superproject root: the same committed
+// file in both trees, resolving to whichever instrument this checkout belongs
+// to. It is what keeps that window showing the right layout without a build
+// flag. Absent (a standalone clone), the monosynth layout is assumed, which is
+// harmless here because the Input overrides it a moment later either way.
+#if __has_include("project_config.h")
+#include "project_config.h"
 #endif
+
+#ifndef SCREEN_CAL_TOPOLOGY_DEFAULT
+#  if defined(PROJECT_INSTRUMENT) && PROJECT_INSTRUMENT == 4
+#    define SCREEN_CAL_TOPOLOGY_DEFAULT CalTopology::Voices4x2
+#  else
+#    define SCREEN_CAL_TOPOLOGY_DEFAULT CalTopology::Monosynth3Osc
+#  endif
+#endif
+
+// Definition lives in displayParams.ino; guarded by screen_state_lock() like
+// every other cross-core field (Serial.h). Snapshot it under the lock before
+// calling screen_cal_topology() from Core1 code that isn't already holding
+// the lock (see drawManualCalibration).
+extern volatile CalTopology screenCalTopology;
 
 // The one seam. Every caller goes through this.
 inline CalTopology screen_cal_topology() {
-  return SCREEN_CAL_TOPOLOGY_DEFAULT;
+  return screenCalTopology;
 }
 
 // Oscillator count is what the synth can report about itself; 3 is the only

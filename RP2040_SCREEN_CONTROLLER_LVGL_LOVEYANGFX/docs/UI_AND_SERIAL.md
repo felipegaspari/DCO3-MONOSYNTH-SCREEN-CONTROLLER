@@ -112,7 +112,19 @@ This sketch is meant to be the single screen firmware for both synths, so the pl
 
 Every caller reads `screen_cal_topology()` and passes the result to a derive helper. **Do not add a per-project `#if` anywhere else** — add a helper here instead, otherwise the two projects cannot share one commit.
 
-Today the accessor returns the compile-time `SCREEN_CAL_TOPOLOGY_DEFAULT` (`Monosynth3Osc` unless overridden with `-DSCREEN_CAL_TOPOLOGY_DEFAULT=CalTopology::Voices4x2`). The intended end state is for the synth to announce its oscillator count over the serial link and for the accessor to return that instead, with the compile-time value demoted to a pre-announcement fallback; `screen_topology_from_osc_count()` already does that mapping. That step is deferred until the parameter set, Input controller, and `dco_control` unification lands, since the announcement has to be part of the unified protocol and the DCO — not the screen or the Input — is the only board that actually knows the hardware.
+### How the value gets set
+
+The Input controller (shared codebase; see `board_model.h` there) announces its `NUM_OSCILLATORS` (3 or 8) over the existing `'y'` link as `PARAM_UI_VOICE_TOPOLOGY` (157) — once at boot right after opening the screen UART, and again on manual-calibration entry as a belt-and-suspenders re-announce. `screenSerial1_handle_param_nav_byte` (`Serial.ino`) routes it into `screenCalTopology` (`displayParams.ino`, guarded by `screen_state_lock()` like every other cross-core field) via `screen_topology_from_osc_count()`. 157 sits outside the 150–155 range that raises `paramChangeFlag`, so it never produces a toast or redraw — it's a pure background state update. `screen_cal_topology()` reads `screenCalTopology` directly; `SCREEN_CAL_TOPOLOGY_DEFAULT` only supplies its initial value for the brief window before the first announcement lands.
+
+```mermaid
+flowchart LR
+  inp["Input board_model.h<br/>NUM_OSCILLATORS = 3 or 8"]
+  inp -->|"'y' id=157 (silent)"| nav["screenSerial1_handle_param_nav_byte"]
+  nav --> topo["screenCalTopology<br/>(screen_state_lock)"]
+  topo --> derive["screen_cal_topology()<br/>-> derive helpers"]
+```
+
+Any Core1 code that reads `screen_cal_topology()` outside an already-held lock must snapshot it under `screen_state_lock()` first, same as any other shared field — see `drawManualCalibration` for the pattern (it snapshots `topology` alongside `stage`/`offset`/`gap`, then calls the derive helpers after unlocking).
 
 ---
 

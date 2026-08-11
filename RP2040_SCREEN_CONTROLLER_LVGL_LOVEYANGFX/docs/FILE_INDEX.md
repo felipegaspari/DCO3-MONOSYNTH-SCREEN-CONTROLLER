@@ -4,6 +4,13 @@ Purpose of **every file**, and for each source function: **what it does**, **who
 
 Scope: **sketch folder root** sources + `docs/`. Vendored `fela_U8g2/` and `src/felanew_U8g2/` are summarized only (unused/legacy).
 
+> `params_def.h`, `param_router.h`, `serial_input_protocol.h`,
+> `serial_param_protocol.h`, `serial_frame.h` and `serial_parser.h` are no longer
+> files in this folder. They come from the shared
+> [`DCO-PROTOCOL`](../../../DCO-PROTOCOL/README.md) library, symlinked in as
+> `SCREEN-CONTROLLER/libraries/DCO-PROTOCOL`. Their entries below still describe
+> the code this board compiles; edit them in the library, once, for every board.
+
 - Deep narrative: [`REFERENCE_AI.md`](REFERENCE_AI.md)
 - UI / serial protocol: [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md)
 - Display / pin map: [`HARDWARE.md`](HARDWARE.md)
@@ -135,7 +142,7 @@ SRAM pinning switch. Defines `SCREEN_SRAM_HOT` (default **1**) and `SCREEN_HOT(f
 
 ### `screen_target.h`
 
-Per-synth UI differences, so one source tree serves both the DCO3 monosynth and the DCO4 4x2 voice board. Defines `enum class CalTopology { Monosynth3Osc, Voices4x2 }`, the compile-time default `SCREEN_CAL_TOPOLOGY_DEFAULT` (overridable with `-D`), and the single accessor `screen_cal_topology()` that every caller goes through. Derive helpers: `screen_topology_from_osc_count()`, `screen_cal_stage_max()` (5 or 7), `screen_cal_stage_to_osc()` (`stage/2` or `stage`), `screen_cal_stage_label()` (SAW/TRI/SQR or DCO chip A/B), `screen_adsr3_osc_select_label()`. Included by `displayParams.h`. All definitions are `inline`/`constexpr`; see [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md) § Voice topology.
+Per-synth UI differences, so one source tree serves both the DCO3 monosynth and the DCO4 4x2 voice board. Defines `enum class CalTopology { Monosynth3Osc, Voices4x2 }`, `extern volatile CalTopology screenCalTopology` (definition in `displayParams.ino`, guarded by `screen_state_lock()`), the pre-announcement fallback `SCREEN_CAL_TOPOLOGY_DEFAULT` (derived from `PROJECT_INSTRUMENT` in the superproject's symlinked `project_config.h`, overridable with `-D`), and the single accessor `screen_cal_topology()` — reads `screenCalTopology` — that every caller goes through. Derive helpers: `screen_topology_from_osc_count()`, `screen_cal_stage_max()` (5 or 7), `screen_cal_stage_to_osc()` (`stage/2` or `stage`), `screen_cal_stage_label()` (SAW/TRI/SQR or DCO chip A/B), `screen_adsr3_osc_select_label()`. Included by `displayParams.h`. `screenCalTopology` is set live from `PARAM_UI_VOICE_TOPOLOGY` (157) in `screenSerial1_handle_param_nav_byte` (`Serial.ino`); see [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md) § Voice topology.
 
 ### `LGFX_RP2040_FELA.hpp`
 
@@ -512,6 +519,7 @@ Unused **inside this sketch folder:** `fela_U8g2/`, `src/felanew_U8g2/`, `tft_se
 | Param display names / remaps | `setDisplayParam()` catalog in this file; switch in `displayParams.ino` |
 | Param → levels / cal / mode signals | `screenParamTable[]` map in this file; `apply_param_*` in `displayParams.ino` |
 | `'y'` nav (stage/offset only) | `screenSerial1_handle_param_nav_byte` in `Serial.ino` → `applyNavParam` in `displayParams.ino` (same table as `'p'/'w'/'x'`) |
+| Voice topology announcement (157) | `screenSerial1_handle_param_nav_byte` in `Serial.ino` → `screenCalTopology` in `displayParams.ino`; sent from Input's `board_model.h` `NUM_OSCILLATORS` |
 | New ParamId | `params_def.h` → display switch and/or `screenParamTable` apply |
 | Preset scroll / name UI | `draw_preset_scroll_1` + `'q'`/`'c'` handlers |
 | Mixer / ADSR bars | `updateLevelBars` (bitmask `LEVEL_BAR_*`) / `updateADSRBars`; level applies + `'a'`/`'b'` |

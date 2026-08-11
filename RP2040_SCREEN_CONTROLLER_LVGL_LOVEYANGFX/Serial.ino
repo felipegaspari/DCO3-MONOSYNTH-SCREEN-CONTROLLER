@@ -161,6 +161,14 @@ static void SCREEN_HOT(screenSerial1_handle_param_nav_byte)(char, const uint8_t*
     applyNavParam(id, val);
   }
 
+  // 157: Input announces its oscillator count (board_model.h NUM_OSCILLATORS)
+  // so this screen's whole calibration UI (screen_target.h) tracks whichever
+  // synth it's attached to. Deliberately outside the 150..155 range below,
+  // so it never raises paramChangeFlag / shows a toast.
+  if (id == static_cast<uint8_t>(ParamId::PARAM_UI_VOICE_TOPOLOGY)) {
+    screenCalTopology = screen_topology_from_osc_count((uint8_t)val);
+  }
+
   // Calibration-related 'y' updates (stage/offset/gap, 150..155) trigger a
   // redraw of the calibration UI so on-screen values update immediately.
   if (id >= static_cast<uint8_t>(ParamId::PARAM_CALIBRATION_FLAG) &&

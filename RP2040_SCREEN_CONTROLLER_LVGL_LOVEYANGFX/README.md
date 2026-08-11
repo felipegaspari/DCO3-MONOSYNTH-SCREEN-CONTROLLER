@@ -64,7 +64,7 @@ Details: [`docs/UI_AND_SERIAL.md`](docs/UI_AND_SERIAL.md).
 | `LV_COLOR_16_SWAP 0` | No RGB565 swap in flush |
 | `SCREEN_SRAM_HOT` | `sram_hot.h`; `0` disables every SRAM pin at once for A/B |
 | `SCREEN_PERF_MONITOR` | Top of main `.ino`; `0` hides and pauses the LVGL FPS/CPU overlay |
-| `SCREEN_CAL_TOPOLOGY_DEFAULT` | `screen_target.h`; `CalTopology::Voices4x2` for the 4x2 voice board |
+| `SCREEN_CAL_TOPOLOGY_DEFAULT` | `screen_target.h`; pre-announcement fallback only — the Input announces the real value live over `'y'` (`PARAM_UI_VOICE_TOPOLOGY`). Defaults from `PROJECT_INSTRUMENT` in the superproject's `project_config.h` (symlinked into this sketch), so the fallback already matches the synth this checkout belongs to |
 
 ---
 

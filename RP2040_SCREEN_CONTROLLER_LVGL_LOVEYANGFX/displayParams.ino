@@ -11,6 +11,10 @@ volatile uint8_t  manualCalibrationOSCN = 0;
 volatile uint8_t  manualCalibrationStage = 0;
 volatile int32_t  calibrationGap = 0;
 
+// Which synth this screen is attached to; set from PARAM_UI_VOICE_TOPOLOGY
+// (Serial.ino) until the Input's first announcement arrives.
+volatile CalTopology screenCalTopology = SCREEN_CAL_TOPOLOGY_DEFAULT;
+
 volatile uint8_t  OSC1Level = 0;
 volatile uint8_t  OSC2Level = 0;
 volatile uint8_t  OSC3Level = 0;
@@ -202,15 +206,17 @@ void draw_preset_scroll_1(ScreenMode mode) {
 // Refresh manual-calibration labels (offset, OSC index, gap) on the cal panel.
 // Core1 only.
 void drawManualCalibration() {
-  int8_t   offsetNow;
-  uint8_t  oscN;
-  uint8_t  stage;
-  int32_t  gap;
+  int8_t      offsetNow;
+  uint8_t     oscN;
+  uint8_t     stage;
+  int32_t     gap;
+  CalTopology topology;
   screen_state_lock();
   offsetNow = offset;
   oscN      = manualCalibrationOSCN;
   stage     = manualCalibrationStage;
   gap       = calibrationGap;
+  topology  = screenCalTopology;
   screen_state_unlock();
 
   char str[8];       // int8 worst case: "-128" + '\0'
@@ -228,7 +234,7 @@ void drawManualCalibration() {
   lv_label_set_text(ui_calibrationGap, strLong);
   lv_label_set_text(ui_calibrationGapShadow, strLong);
 
-  const char* waveformText = screen_cal_stage_label(screen_cal_topology(), stage);
+  const char* waveformText = screen_cal_stage_label(topology, stage);
   lv_label_set_text(ui_waveform, waveformText);
   lv_label_set_text(ui_waveformShadow, waveformText);
 }
