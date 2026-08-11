@@ -1,6 +1,31 @@
 #include "params_def.h"
 #include "param_router.h"
 
+// Definitions for display/model shared state (extern declarations in
+// displayParams.h).
+uint16_t paramHideTimeMillis = 3000;
+bool     paramChangeTimerFlag = false;
+
+volatile int8_t   offset = 0;
+volatile uint8_t  manualCalibrationOSCN = 0;
+volatile uint8_t  manualCalibrationStage = 0;
+volatile int32_t  calibrationGap = 0;
+
+volatile uint8_t  OSC1Level = 0;
+volatile uint8_t  OSC2Level = 0;
+volatile uint8_t  OSC3Level = 0;
+volatile uint8_t  SUBLevel = 0;
+
+volatile uint16_t ADSR1Attack = 0;
+volatile uint16_t ADSR1Decay = 0;
+volatile uint16_t ADSR1Sustain = 0;
+volatile uint16_t ADSR1Release = 0;
+
+volatile uint16_t ADSR2Attack = 0;
+volatile uint16_t ADSR2Decay = 0;
+volatile uint16_t ADSR2Sustain = 0;
+volatile uint16_t ADSR2Release = 0;
+
 // Type alias for the screen's parameter router value type.
 // NOTE: avoid using this alias in function parameter lists because the Arduino
 // build system generates prototypes before these typedefs.
@@ -12,15 +37,15 @@ using ScreenParamDescriptor = ParamDescriptorT<ScreenParamValueT>;
 // model state or screen signals (separate from the user-facing text).
 // ---------------------------------------------------------------------------
 
-// Mixer levels -> bar values
+// Mixer levels -> bar values (bitmask so simultaneous updates aren't lost)
 static void apply_param_osc1_level(int32_t v) {
-  OSC1Level    = (uint8_t)v;
-  levelBarFlag = 1;
+  OSC1Level     = (uint8_t)v;
+  levelBarFlag |= LEVEL_BAR_OSC1;
 }
 
 static void apply_param_osc2_level(int32_t v) {
-  OSC2Level    = (uint8_t)v;
-  levelBarFlag = 2;
+  OSC2Level     = (uint8_t)v;
+  levelBarFlag |= LEVEL_BAR_OSC2;
 }
 
 static void apply_param_osc3_level(int32_t v) {
@@ -28,37 +53,36 @@ static void apply_param_osc3_level(int32_t v) {
   // No dedicated OSC3 bar widget yet — toast still updates via draw_param_1.
 }
 
-// SUB mixer level → bar 3
 static void apply_param_sub_level(int32_t v) {
-  SUBLevel     = (uint8_t)v;
-  levelBarFlag = 3;
+  SUBLevel      = (uint8_t)v;
+  levelBarFlag |= LEVEL_BAR_SUB;
 }
 
 // Calibration flags / screen navigation
 static void apply_param_calibration_flag(int32_t v) {
-  switch ((int32_t)v) {
+  switch (v) {
     case 0:
-      serialSignal = 2;
+      serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
       break;
     case 1:
-      serialSignal = 7;
+      serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
       break;
     default:
-      break;
+      return;
   }
   signalFlag = true;
 }
 
 static void apply_param_manual_calibration_flag(int32_t v) {
-  switch ((int32_t)v) {
+  switch (v) {
     case 1:
-      serialSignal = 8;
+      serialSignal = screen_mode_raw(ScreenMode::ManualCalibration);
       break;
     case 0:
-      serialSignal = 7;
+      serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
       break;
     default:
-      break;
+      return;
   }
   signalFlag = true;
 }
@@ -82,19 +106,15 @@ static void apply_param_gap_from_dco(int32_t v) {
 
 static void apply_param_ui_calibration_dismiss(int32_t) {
   // EXIT CURRENT MENU
-  switch (serialSignal) {
-    case 7:
-      serialSignal = 2;
-      signalFlag   = true;
-      break;
-    default:
-      break;
+  if (serialSignal == screen_mode_raw(ScreenMode::CalibrationMenu)) {
+    serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
+    signalFlag   = true;
   }
 }
 
 static void apply_param_ui_calibration_menu_mode(int32_t) {
   // CALIBRATION MENU
-  serialSignal = 7;
+  serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
   signalFlag   = true;
 }
 
@@ -116,85 +136,102 @@ static const ScreenParamDescriptor screenParamTable[] = {
 static const size_t screenParamTableSize =
   sizeof(screenParamTable) / sizeof(screenParamTable[0]);
 
-// Show param name/value toast on the bottom message panel.
+// Show param name/value toast on the bottom message panel. Core1 only.
 void draw_param_1() {
 
   paramChangeLastMillis = millis();
   paramChangeTimerFlag = true;
 
-  char str[3];
-  itoa(paramValue, str, 10);
-  lv_label_set_text(ui_CommandMessage, paramName.c_str());
-  lv_label_set_text(ui_CommandMessageShadow, paramName.c_str());
+  const char* name;
+  int32_t value;
+  screen_state_lock();
+  name  = paramName;
+  value = paramValue;
+  screen_state_unlock();
+
+  char str[12];  // int32 worst case: "-2147483648" + '\0'
+  itoa(value, str, 10);
+  lv_label_set_text(ui_CommandMessage, name);
+  lv_label_set_text(ui_CommandMessageShadow, name);
   lv_label_set_text(ui_CommandValueShadow, str);
   lv_label_set_text(ui_CommandValue, str);
 
   lv_obj_remove_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Draw preset number/name widgets according to current serialSignal mode.
-void draw_preset_scroll_1() {
+// Draw preset number/name widgets for the given screen mode. Core1 only.
+void draw_preset_scroll_1(ScreenMode mode) {
 
-  char str[3];
-  itoa(presetNumber, str, 10);
-  switch (serialSignal) {
-    case 1:
+  char name[17];
+  byte num;
+  uint8_t charPos;
+  screen_state_lock();
+  num     = presetNumber;
+  charPos = presetChar;
+  snapshot_preset_name(name);
+  screen_state_unlock();
+
+  char str[12];
+  itoa(num, str, 10);
+  switch (mode) {
+    case ScreenMode::PresetScroll:
+    case ScreenMode::LoadSaveExit:
       lv_label_set_text(ui_PresetN, str);
       lv_label_set_text(ui_PresetNShadow, str);
-      lv_label_set_text(ui_PresetName, (const char *)presetNameBytes);
-      lv_label_set_text(ui_PresetNameShadow, (const char *)presetNameBytes);
+      lv_label_set_text(ui_PresetName, name);
+      lv_label_set_text(ui_PresetNameShadow, name);
       break;
-    case 2:
-      lv_label_set_text(ui_PresetN, str);
-      lv_label_set_text(ui_PresetNShadow, str);
-      lv_label_set_text(ui_PresetName, (const char *)presetNameBytes);
-      lv_label_set_text(ui_PresetNameShadow, (const char *)presetNameBytes);
-      break;
-    case 3:
+    case ScreenMode::SaveSelectPreset:
       lv_label_set_text(ui_PresetNNew, str);
       lv_label_set_text(ui_PresetNNewShadow, str);
-      lv_label_set_text(ui_PresetNameNew, (const char *)presetNameBytes);
-      lv_label_set_text(ui_PresetNameNewShadow, (const char *)presetNameBytes);
+      lv_label_set_text(ui_PresetNameNew, name);
+      lv_label_set_text(ui_PresetNameNewShadow, name);
       break;
-    case 4:
-
-      //lv_obj_add_state(ui_PresetNewName, LV_STATE_FOCUSED);
-      //lv_textarea_set_text(ui_PresetNewName, (const char *)presetNameBytes);
+    case ScreenMode::SaveSetName:
       lv_textarea_delete_char_forward(ui_PresetNewName);
-      lv_textarea_add_char(ui_PresetNewName, (char)presetNameBytes[presetChar]);
-      lv_textarea_set_cursor_pos(ui_PresetNewName, presetChar);
+      lv_textarea_add_char(ui_PresetNewName, name[charPos]);
+      lv_textarea_set_cursor_pos(ui_PresetNewName, charPos);
       break;
-    case 5:
-      break;
-    case 6:
+    default:
       break;
   }
 }
 
 // Refresh manual-calibration labels (offset, OSC index, gap) on the cal panel.
+// Core1 only.
 void drawManualCalibration() {
-  char str[3];
-  char strLong[8];
+  int8_t   offsetNow;
+  uint8_t  oscN;
+  uint8_t  stage;
+  int32_t  gap;
+  screen_state_lock();
+  offsetNow = offset;
+  oscN      = manualCalibrationOSCN;
+  stage     = manualCalibrationStage;
+  gap       = calibrationGap;
+  screen_state_unlock();
 
-  itoa(offset, str, 10);
+  char str[8];       // int8 worst case: "-128" + '\0'
+  char strLong[12];  // int32 worst case: "-2147483648" + '\0'
+
+  itoa(offsetNow, str, 10);
   lv_label_set_text(ui_calibrationOffset, str);
   lv_label_set_text(ui_calibrationOffsetShadow, str);
 
-  itoa(manualCalibrationOSCN, str, 10);
+  itoa(oscN, str, 10);
   lv_label_set_text(ui_oscillatorN, str);
   lv_label_set_text(ui_oscillatorNShadow, str);
 
-
-  ltoa(calibrationGap, strLong, 10);
+  ltoa(gap, strLong, 10);
   lv_label_set_text(ui_calibrationGap, strLong);
   lv_label_set_text(ui_calibrationGapShadow, strLong);
 
   // Monosynth: 3 oscillators × 2 stages (0–5). Odd stages 1,5 = TRI (OSC1/OSC3);
   // odd stage 3 = SQR (OSC2), matching Input/DCO manual-cal conventions.
-  if ((manualCalibrationStage % 2) == 0) {
+  if ((stage % 2) == 0) {
     lv_label_set_text(ui_waveform, "SAW");
     lv_label_set_text(ui_waveformShadow, "SAW");
-  } else if (manualCalibrationStage == 1 || manualCalibrationStage == 5) {
+  } else if (stage == 1 || stage == 5) {
     lv_label_set_text(ui_waveform, "TRI");
     lv_label_set_text(ui_waveformShadow, "TRI");
   } else {
@@ -216,7 +253,19 @@ static void applyParamToModelAndSignals() {
   );
 }
 
-// Map paramNumber to label text + apply model side-effects; raises paramChangeFlag.
+// Router entry point for the 'y' nav path (Serial.ino). Caller must hold
+// screen_state_lock().
+void applyNavParam(uint8_t id, int32_t value) {
+  param_router_apply<ScreenParamValueT>(
+    screenParamTable,
+    screenParamTableSize,
+    id,
+    (ScreenParamValueT)value
+  );
+}
+
+// Map paramNumber to label text + apply model side-effects. Runs on Core0
+// with screen_state_lock() held (called from the serial param handlers).
 void setDisplayParam() {
   // First update internal model / screen state.
   applyParamToModelAndSignals();

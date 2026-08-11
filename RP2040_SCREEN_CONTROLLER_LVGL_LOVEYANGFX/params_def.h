@@ -191,7 +191,18 @@ enum ParamId : uint8_t {
   PARAM_GAP_FROM_DCO             = 154,
 
   // 155: manual calibration offsets reported from DCO back to the Input board.
-  PARAM_MANUAL_CALIBRATION_OFFSET_FROM_DCO = 155
+  PARAM_MANUAL_CALIBRATION_OFFSET_FROM_DCO = 155,
+
+  // 156: explicit "store manual calibration offsets" command (was missing here).
+  PARAM_MANUAL_CALIBRATION_STORE = 156,
+
+  // --- Preset store / dump commands (DCO-local; no handling on Screen) -
+  // Reserved here for numeric parity only; see DCO/preset_store.h for the
+  // record format and the '[dump]'/'[pdir]'/'[preset]'/'[bulk]' protocol.
+  PARAM_PRESET_SAVE              = 170,  // value = slot 0..255: save live state
+  PARAM_PRESET_LOAD              = 171,  // value = slot 0..255: recall slot
+  PARAM_PRESET_DUMP              = 172,  // -1 = directory, 0..255 = slot record hex
+  PARAM_CAL_DUMP                 = 173   // 0/-1 = all cal tables, 1..5 = one (CAL_DUMP_*)
 };
 
 #endif  // PARAMS_DEF_MAINBOARD_H

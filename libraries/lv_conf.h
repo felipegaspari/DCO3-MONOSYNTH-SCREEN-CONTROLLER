@@ -751,8 +751,11 @@
     #define LV_SYSMON_GET_IDLE lv_timer_get_idle
 
     /*1: Show CPU usage and FPS count
-     * Requires `LV_USE_SYSMON = 1`*/
-    #define LV_USE_PERF_MONITOR 0
+     * Requires `LV_USE_SYSMON = 1`
+     * Visibility is toggled at runtime from the sketch via SCREEN_PERF_MONITOR
+     * (see RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX.ino). Keep this 1 so
+     * lv_sysmon_hide_performance / pause stay available.*/
+    #define LV_USE_PERF_MONITOR 1
     #if LV_USE_PERF_MONITOR
         #define LV_USE_PERF_MONITOR_POS LV_ALIGN_BOTTOM_RIGHT
 

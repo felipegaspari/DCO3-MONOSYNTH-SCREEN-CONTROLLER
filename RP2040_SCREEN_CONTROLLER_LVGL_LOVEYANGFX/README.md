@@ -14,7 +14,7 @@ System context: [`docs/SYSTEM_OVERVIEW.md`](docs/SYSTEM_OVERVIEW.md) → canonic
 | Doc | Status | Contents |
 |-----|--------|----------|
 | [`docs/SYSTEM_OVERVIEW.md`](docs/SYSTEM_OVERVIEW.md) | Current | Stub → three-board overview + local UART table |
-| [`docs/UI_AND_SERIAL.md`](docs/UI_AND_SERIAL.md) | Current | ScreenMode 1–8, Serial1 cmds, Core0→Core1 flags |
+| [`docs/UI_AND_SERIAL.md`](docs/UI_AND_SERIAL.md) | Current | ScreenMode 1–8, Serial1 cmds, Core0→Core1 flags + cross-core lock |
 | [`docs/HARDWARE.md`](docs/HARDWARE.md) | Current | UART pins, LovyanGFX deps, unused U8g2/TFT leftovers |
 | [`docs/FILE_INDEX.md`](docs/FILE_INDEX.md) | Current | Project files + functions + call sites |
 | [`docs/REFERENCE_AI.md`](docs/REFERENCE_AI.md) | Current | Semantic map for developers / AI |
@@ -23,12 +23,12 @@ System context: [`docs/SYSTEM_OVERVIEW.md`](docs/SYSTEM_OVERVIEW.md) → canonic
 
 ## Features
 
-- Dual-core: Core0 serial RX; Core1 LVGL render/update.
+- Dual-core: Core0 serial RX; Core1 LVGL render/update. All state shared between cores is guarded by a pico-sdk mutex (`screenStateMutex`) — Core0 publishes fields+flag together, Core1 snapshots them and releases the lock before touching LVGL.
 - Screens: main preset/param UI + manual calibration (SquareLine `ui.h`).
-- Serial1 @ 2.5 Mbaud from Input — the only peer link, receive-only on RX GP13 (TX GP12 is unconnected; Input never reads from the Screen). Carries ADSR bars, params, `'y'` nav, 16-char preset names, mode signals, plus the DCO calibration gap `'x'` 154 relayed by Input.
-- Param toast labels, OSC/SUB level bars, ADSR bars, calibration stage/offset/gap.
+- Serial1 @ 2.5 Mbaud from Input — the only peer link, receive-only on RX GP13 (TX GP12 is unconnected; Input never reads from the Screen). Carries ADSR bars, params, `'y'` nav (routed through the same param-router table as `'p'/'w'/'x'`), 16-char preset names, mode signals, plus the DCO calibration gap `'x'` 154 relayed by Input.
+- Param toast labels, OSC/SUB level bars (bitmask-driven so simultaneous updates aren't lost), ADSR bars, calibration stage/offset/gap.
 
-**Not active here:** touch input; USB MIDI product identity (commented); vendored U8g2 trees; TFT_eSPI `tft_setup.h`.
+**Not active here:** touch input (no LVGL indev registered); USB MIDI product identity (commented); vendored U8g2 trees; TFT_eSPI `tft_setup.h`.
 
 ---
 
@@ -37,8 +37,9 @@ System context: [`docs/SYSTEM_OVERVIEW.md`](docs/SYSTEM_OVERVIEW.md) → canonic
 | Layer | Location |
 |-------|----------|
 | Entry / dual-core | `RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX.ino` |
-| Serial parsers | `Serial.ino`, `serial_*.h` |
-| Param → UI model | `displayParams.*`, `parameters.ino` |
+| ScreenMode enum | `screen_mode.h` |
+| Serial parsers + cross-core lock | `Serial.ino`, `Serial.h`, `serial_*.h` |
+| Param → UI model | `displayParams.h`, `displayParams.ino` |
 | Widgets | External `<ui.h>` (SquareLine) |
 | Panel | External LovyanGFX + `LGFX_RP2040_FELA.hpp` |
 
@@ -66,5 +67,6 @@ Details: [`docs/UI_AND_SERIAL.md`](docs/UI_AND_SERIAL.md).
 
 - Start with [`docs/REFERENCE_AI.md`](docs/REFERENCE_AI.md) and [`docs/FILE_INDEX.md`](docs/FILE_INDEX.md).
 - Keep LVGL off Core0; keep UART off Core1.
+- Any field read on one core and written on the other must be inside `screen_state_lock()`/`screen_state_unlock()` on both sides; never call `lv_*` while the lock is held.
 - Align ParamIds with the DCO and Input boards; sync SquareLine widget names with draw helpers.
 - Prefer documenting over deleting the unused U8g2 trees unless you intentionally clean the repo.

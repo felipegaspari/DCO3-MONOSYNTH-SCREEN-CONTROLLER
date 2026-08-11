@@ -1,14 +1,11 @@
-// Definitions for serial-related shared state.
-// These were previously defined in Serial.h; they now live here with
-// extern declarations in the header to avoid multiple-definition issues.
+// Definitions for serial-related shared state (extern declarations in Serial.h).
 volatile byte    presetNumber       = 0;
-String           presetNameString   = "Vacio";
 
 volatile bool    presetScrollFlag   = false;
 
 volatile byte    paramNumber        = 0;
 volatile int32_t paramValue         = 0;
-String           paramName;
+const char* volatile paramName      = "";
 
 volatile bool    paramChangeFlag    = false;
 
@@ -16,23 +13,28 @@ volatile bool    updateADSR1Flag    = false;
 volatile bool    updateADSR2Flag    = false;
 
 volatile bool    signalFlag         = false;
-volatile byte    serialSignal       = 1;
+volatile byte    serialSignal       = screen_mode_raw(ScreenMode::PresetScroll);
 
 volatile bool    presetCharFlag     = false;
 volatile byte    presetChar         = 0;
 
-volatile byte    levelBarFlag       = true;
+volatile byte    levelBarFlag       = 0;
 
 // +1 for null terminator so LVGL/string APIs see a clean C-string.
 volatile char    presetNameBytes[17];
-volatile char    presetNameBytesOLD[17];
 
-// Forward declaration from parameters.ino.
-void updateParameters(byte paramNumberNavigation, int32_t paramValueNavigation);
+// Cross-core state lock. The .mutex_array section makes the pico-sdk runtime
+// call mutex_init() on it before either core runs sketch code, so there is no
+// setup()/setup1() ordering hazard.
+mutex_t screenStateMutex __attribute__((section(".mutex_array")));
+
+// Forward declaration from displayParams.ino (router-backed apply table).
+void applyNavParam(uint8_t id, int32_t value);
 
 // ---------------------------------------------------------------------------
 // Screen controller serial parser (Serial1: input -> screen).
 // Input is the only peer: it sends UI frames and relays the DCO gap 'x' (154).
+// All handlers run on Core0; they publish shared state under screen_state_lock.
 // ---------------------------------------------------------------------------
 
 static const uint8_t SCREEN_SERIAL_LEN_PARAM_16          = 3;   // [id, i16 LE]
@@ -49,47 +51,51 @@ static const uint8_t SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV = 2;   // 'y': [paramId
 // ---------------------------
 
 // 'a' : ADSR1 block (attack/decay/sustain/release) from input controller.
-static void screenSerial1_handle_adsr1(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_adsr1)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_ADSR_BLOCK) {
     return;
   }
 
+  screen_state_lock();
   ADSR1Attack  = decode_u16_le(payload + 0);
   ADSR1Decay   = decode_u16_le(payload + 2);
   ADSR1Sustain = decode_u16_le(payload + 4);
   ADSR1Release = decode_u16_le(payload + 6);
-
   updateADSR1Flag = true;
+  screen_state_unlock();
 }
 
 // 'b' : ADSR2 block from input controller.
-static void screenSerial1_handle_adsr2(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_adsr2)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_ADSR_BLOCK) {
     return;
   }
 
+  screen_state_lock();
   ADSR2Attack  = decode_u16_le(payload + 0);
   ADSR2Decay   = decode_u16_le(payload + 2);
   ADSR2Sustain = decode_u16_le(payload + 4);
   ADSR2Release = decode_u16_le(payload + 6);
-
   updateADSR2Flag = true;
+  screen_state_unlock();
 }
 
 // Shared helper for 'p'/'w'/'x' coming from input controller.
-static inline void screenSerial1_apply_param_from_frame(const ParamFrame& frame) {
+static inline void SCREEN_HOT(screenSerial1_apply_param_from_frame)(const ParamFrame& frame) {
+  screen_state_lock();
   paramNumber = frame.id;
   paramValue  = frame.value;
 
   setDisplayParam();
 
-  if (serialSignal != 6) {
+  if (serialSignal != screen_mode_raw(ScreenMode::Silent)) {
     paramChangeFlag = true;
   }
+  screen_state_unlock();
 }
 
 // 'p' : PARAM 16-bit from input controller.
-static void screenSerial1_handle_param16(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_param16)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_PARAM_16) {
     return;
   }
@@ -99,7 +105,7 @@ static void screenSerial1_handle_param16(char, const uint8_t* payload, uint8_t l
 }
 
 // 'w' : PARAM 8-bit from input controller.
-static void screenSerial1_handle_param8(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_param8)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_PARAM_8) {
     return;
   }
@@ -125,7 +131,7 @@ static void screenSerial1_handle_param8(char, const uint8_t* payload, uint8_t le
 }
 
 // 'x' : PARAM 32-bit from input controller (gap 154 relayed from DCO).
-static void screenSerial1_handle_param32(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_param32)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_PARAM_32) {
     return;
   }
@@ -136,35 +142,42 @@ static void screenSerial1_handle_param32(char, const uint8_t* payload, uint8_t l
 
 // 'y' : small navigation / calibration param from input controller.
 // payload: [paramId, value]
-static void screenSerial1_handle_param_nav_byte(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_param_nav_byte)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV) {
     return;
   }
 
-  byte id    = payload[0];
-  int8_t val = (int8_t)payload[1];
+  uint8_t id  = payload[0];
+  int32_t val = (int8_t)payload[1];
 
+  screen_state_lock();
   paramNumber = id;
-  paramValue  = (int16_t)val;
+  paramValue  = val;
 
-  updateParameters(paramNumber, (int32_t)paramValue);
+  // Manual calibration stage/offset go through the shared param router so the
+  // clamp/derive logic lives in one place (displayParams.ino apply table).
+  if (id == static_cast<uint8_t>(ParamId::PARAM_MANUAL_CALIBRATION_STAGE) ||
+      id == static_cast<uint8_t>(ParamId::PARAM_MANUAL_CALIBRATION_OFFSET)) {
+    applyNavParam(id, val);
+  }
 
-  // For calibration-related 'y' updates coming from the input controller
-  // (manual stage/offset, etc.), trigger a redraw of the calibration UI so
-  // the on-screen values update immediately when changing oscillators or
-  // tweaking the offset.
-  if (paramNumber >= 150 && paramNumber <= 155) {
+  // Calibration-related 'y' updates (stage/offset/gap, 150..155) trigger a
+  // redraw of the calibration UI so on-screen values update immediately.
+  if (id >= static_cast<uint8_t>(ParamId::PARAM_CALIBRATION_FLAG) &&
+      id <= static_cast<uint8_t>(ParamId::PARAM_MANUAL_CALIBRATION_OFFSET_FROM_DCO)) {
     paramChangeFlag = true;
   }
+  screen_state_unlock();
 }
 
 // 'q' : preset scroll from input controller.
 // payload: [presetNumber, 16 chars]
-static void screenSerial1_handle_preset_scroll(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_preset_scroll)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL1_LEN_PRESET_SCROLL) {
     return;
   }
 
+  screen_state_lock();
   presetNumber = payload[0];
   for (int i = 0; i < 16; ++i) {
     uint8_t c = payload[i + 1];
@@ -175,26 +188,34 @@ static void screenSerial1_handle_preset_scroll(char, const uint8_t* payload, uin
   }
   presetNameBytes[16] = '\0';
 
-  presetNameString = String((char*)presetNameBytes);
   presetScrollFlag = true;
+  screen_state_unlock();
 }
 
 // 's' : screen mode / signal from input controller.
-static void screenSerial1_handle_signal(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_signal)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_SIGNAL) {
     return;
   }
+  screen_state_lock();
   serialSignal = payload[0];
   signalFlag   = true;
+  screen_state_unlock();
 }
 
 // 'c' : preset char index from input controller.
-static void screenSerial1_handle_char_select(char, const uint8_t* payload, uint8_t len) {
+static void SCREEN_HOT(screenSerial1_handle_char_select)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_CHAR_SELECT) {
     return;
   }
-  presetChar     = payload[0];
+  uint8_t idx = payload[0];
+  if (idx > 15) {           // index into the 16-char preset name
+    idx = 15;
+  }
+  screen_state_lock();
+  presetChar     = idx;
   presetCharFlag = true;
+  screen_state_unlock();
 }
 
 static const SerialCommandDef screenSerial1Commands[] = {
@@ -221,6 +242,6 @@ void init_screen_serial() {
 }
 
 // Core0: non-blocking Input Serial1 parser pump.
-void serial_read_n() {
+void SCREEN_HOT(serial_read_n)() {
   serial_parser_drain(screenSerial1Parser, screenSerial1Lut, Serial1, SERIAL_DRAIN_BYTE_BUDGET);
 }

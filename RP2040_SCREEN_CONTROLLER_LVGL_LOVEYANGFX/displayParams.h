@@ -2,31 +2,42 @@
 #define __DISPLAY_PARAMS_H__
 
 #include "params_def.h"
+#include "screen_mode.h"
 
-uint16_t paramHideTimeMillis = 3000;
-bool paramChangeTimerFlag = false;
+// Bits of levelBarFlag: pending level-bar widget updates.
+static constexpr uint8_t LEVEL_BAR_OSC1 = 0x01;
+static constexpr uint8_t LEVEL_BAR_OSC2 = 0x02;
+static constexpr uint8_t LEVEL_BAR_SUB  = 0x04;
 
-volatile int8_t offset;
-volatile uint8_t manualCalibrationOSCN;
-volatile uint8_t manualCalibrationStage;
-volatile int32_t calibrationGap;
+// Definitions live in displayParams.ino (extern pattern like Serial.h/Serial.ino).
+extern uint16_t paramHideTimeMillis;
+extern bool     paramChangeTimerFlag;
 
-volatile uint8_t OSC1Level;
-volatile uint8_t OSC2Level;
-volatile uint8_t OSC3Level;
-volatile uint8_t SUBLevel;
+extern volatile int8_t   offset;
+extern volatile uint8_t  manualCalibrationOSCN;
+extern volatile uint8_t  manualCalibrationStage;
+extern volatile int32_t  calibrationGap;
 
-volatile uint16_t ADSR1Attack ;
-volatile uint16_t ADSR1Decay ;
-volatile uint16_t ADSR1Sustain ;
-volatile uint16_t ADSR1Release ;
+extern volatile uint8_t  OSC1Level;
+extern volatile uint8_t  OSC2Level;
+extern volatile uint8_t  OSC3Level;
+extern volatile uint8_t  SUBLevel;
 
-volatile uint16_t ADSR2Attack ;
-volatile uint16_t ADSR2Decay ;
-volatile uint16_t ADSR2Sustain ;
-volatile uint16_t ADSR2Release ;
+extern volatile uint16_t ADSR1Attack;
+extern volatile uint16_t ADSR1Decay;
+extern volatile uint16_t ADSR1Sustain;
+extern volatile uint16_t ADSR1Release;
 
+extern volatile uint16_t ADSR2Attack;
+extern volatile uint16_t ADSR2Decay;
+extern volatile uint16_t ADSR2Sustain;
+extern volatile uint16_t ADSR2Release;
 
-
+// displayParams.ino
+void draw_param_1();
+void draw_preset_scroll_1(ScreenMode mode);
+void drawManualCalibration();
+void setDisplayParam();
+void applyNavParam(uint8_t id, int32_t value);
 
 #endif

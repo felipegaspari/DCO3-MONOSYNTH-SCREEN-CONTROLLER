@@ -38,7 +38,9 @@
 #ifndef _LGFX_QRCODE_H_
 #define _LGFX_QRCODE_H_
 
-#ifndef __cplusplus
+// C23 (__STDC_VERSION__ >= 202311L) makes bool/true/false native keywords;
+// only define this pre-C99 shim when compiling as C and pre-C23.
+#if !defined(__cplusplus) && (!defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L)
 typedef unsigned char bool;
 static const bool false = 0;
 static const bool true = 1;

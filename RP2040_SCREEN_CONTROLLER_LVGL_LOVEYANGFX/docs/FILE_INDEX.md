@@ -10,10 +10,10 @@ Scope: **sketch folder root** sources + `docs/`. Vendored `fela_U8g2/` and `src/
 - Three-board topology: [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) (stub → DCO canonical)
 - Repo entry / doc index: [`../README.md`](../README.md)
 
-Headers with no bodies are marked **no function definitions**.  
+Headers with no bodies are marked **no function definitions**.
 **Dead** = no live callers. **Unreachable** = call site exists but cannot run as currently gated. **`#ifdef` gated** = compiled only when the flag is set. **commented-out** = body fully commented (not compiled).
 
-MCU: **RP2040** (dual Arduino cores). Screen brain: LVGL + LovyanGFX UI; Serial1 ← Input (only peer link, receive-only: RX GP13, TX GP12 unconnected); `ScreenMode` 1–8 from `serialSignal`.
+MCU: **RP2040** (dual Arduino cores). Screen brain: LVGL + LovyanGFX UI; Serial1 ← Input (only peer link, receive-only: RX GP13, TX GP12 unconnected); `ScreenMode` 1–8 from `serialSignal`. All state shared between Core0 (serial parser) and Core1 (LVGL) is guarded by `screenStateMutex` (`screen_state_lock()` / `screen_state_unlock()` in `Serial.h`).
 
 ---
 
@@ -32,14 +32,11 @@ flowchart TD
   setup1 --> lvInit["lv_init"]
   setup1 --> tftBegin["tft.begin + setRotation"]
   setup1 --> disp["lv_display_create + my_disp_flush"]
-  setup1 --> indev["lv_indev_create + my_touchpad_read"]
   setup1 --> tick["lv_tick_set_cb my_tick_get_cb"]
   setup1 --> uiInit["ui_init + PresetNewName anim"]
 
   loop0 --> rs1["serial_read_n() Serial1 Input"]
 
-  loop1 --> millis1["millisTimer()"]
-  loop1 --> mode["getScreenMode()"]
   loop1 --> hMode["handleScreenModeChange"]
   loop1 --> bottom["updateBottomMessageAndPresetUI"]
   loop1 --> levels["updateLevelBars"]
@@ -47,8 +44,8 @@ flowchart TD
   loop1 --> calUI["updateCalibrationUI"]
   loop1 --> lvh["lv_timer_handler"]
 
-  rs1 --> handlers1["screenSerial1_handle_*"]
-  handlers1 --> setDisp["setDisplayParam / updateParameters / flags"]
+  rs1 --> handlers1["screenSerial1_handle_* (lock/unlock)"]
+  handlers1 --> setDisp["setDisplayParam / applyNavParam"]
   setDisp --> router["param_router_apply screenParamTable"]
   hMode --> drawP["draw_preset_scroll_1 / screens"]
   bottom --> drawParam["draw_param_1 / draw_preset_scroll_1"]
@@ -62,13 +59,13 @@ flowchart TD
 | Boot Core1 | Inside `setup1()` once — LVGL + LovyanGFX + SquareLine `ui_init` |
 | Every `loop` | Core0 forever: Serial1 parser |
 | Every `loop1` | Core1 forever: mode/UI flags + `lv_timer_handler` |
-| Soft timer | `millisTimer()` runs on Core1; **flags have no live readers** today (only commented `timer200msFlag` in `loop`) |
+| Cross-core lock | `screenStateMutex` — Core0 handlers publish under lock; Core1 snapshots under lock, then calls LVGL with the lock released |
 | Serial1 (Input) | Only peer link, receive-only (RX GP13; TX GP12 unconnected) — parser on Input→Screen (`serial_read_n`) — ADSR `'a'`/`'b'`, params (incl. relayed DCO gap `'x'` 154), `'y'` nav, scroll/signal/char |
-| Param table | `screenParamTable[]` via `setDisplayParam` → `applyParamToModelAndSignals` (see catalogs under `displayParams.ino`) |
-| `'y'` nav | `updateParameters()` only (stage/offset); not the full display-name switch |
-| ScreenMode | `serialSignal` 1–8 → `enum class ScreenMode` |
-| LVGL callback | Flush / tick / empty touch read registered in `setup1` |
-| `#ifdef` | `LV_USE_LOG` (default **0** → `my_print` omitted) |
+| Param table | `screenParamTable[]` via `setDisplayParam` → `applyParamToModelAndSignals`, and directly via `applyNavParam` for `'y'` cal stage/offset (see catalogs under `displayParams.ino`) |
+| `'y'` nav | Stage/offset route through `applyNavParam` (same table as `'p'/'w'/'x'`); ids 150..155 also raise `paramChangeFlag` for calibration UI redraw |
+| ScreenMode | `serialSignal` 1–8 → `enum class ScreenMode` (now in `screen_mode.h`); Core1 latches its own `currentMode` copy in `handleScreenModeChange` — Core0 is the sole writer of `serialSignal` |
+| LVGL callback | Flush / tick registered in `setup1`. No indev/touch driver (display-only; the previous no-op touchpad stub was removed) |
+| `#ifdef` | `LV_USE_LOG` (default **0** → `my_print` omitted; when enabled it's registered via `lv_log_register_print_cb`) |
 
 ---
 
@@ -76,55 +73,46 @@ flowchart TD
 
 ### `RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX.ino`
 
-Main sketch: dual-core split — Core0 UART RX, Core1 LVGL UI. Defines `ScreenMode` (1–8), display flush, and `loop1` UI orchestration.
+Main sketch: dual-core split — Core0 UART RX, Core1 LVGL UI. Includes `ScreenMode` from `screen_mode.h`, defines display flush, and `loop1` UI orchestration.
 
 **Functions**
-- `getScreenMode()` — Cast `serialSignal` → `ScreenMode`.
-  - **Called from:** `loop1()`.
-  - **When:** Every `loop1`.
-- `setScreenMode(ScreenMode)` — Write `serialSignal` from enum.
-  - **Called from:** `handleScreenModeChange` (LoadSaveExit → PresetScroll; SaveCompleted → PresetScroll).
-  - **When:** Mode-change handling on Core1.
 - `my_print(const char*)` — USB Serial LVGL log sink.
-  - **Called from:** **none live** — only compiled when `LV_USE_LOG != 0` (default **0** → **`#ifdef` gated off**).
+  - **Called from:** LVGL via `lv_log_register_print_cb` (registered in `setup1`), only when `LV_USE_LOG != 0` (default **0** → **`#ifdef` gated off**).
 - `my_disp_flush(...)` — Push LVGL dirty rect to LovyanGFX (`setAddrWindow` + `pushPixels`); `lv_disp_flush_ready`.
   - **Called from:** LVGL via `lv_display_set_flush_cb` (registered in `setup1`).
   - **When:** LVGL callback / render.
-- `my_touchpad_read(...)` — Empty stub (no touch hardware wired).
-  - **Called from:** LVGL via `lv_indev_set_read_cb` (registered in `setup1`).
-  - **When:** LVGL input poll (no-op body).
 - `my_tick_get_cb()` — Return `millis()` for LVGL tick.
   - **Called from:** LVGL via `lv_tick_set_cb` (registered in `setup1`).
   - **When:** LVGL internal timing.
-- `setup()` — USB Serial @ 1 000 000; Serial1 RX13/TX12 (only peer link; TX12 configured in firmware but unconnected — receive-only) @ 2 500 000, IRQ, FIFO 512; `init_screen_serial()`.
+- `setup()` — USB Serial @ 1 000 000; Serial1 RX13/TX12 (only peer link; TX12 configured in firmware but unconnected — receive-only) @ 2 500 000, IRQ, FIFO 512; `init_screen_serial()`.
   - **Called from:** Arduino framework (Core 0).
   - **When:** Boot Core0 once.
-- `setup1()` — `lv_init`; LovyanGFX `tft.begin` / rotation 3; create partial buffer display + flush cb; pointer indev + touch cb; tick cb; `ui_init`; speed up `ui_PresetNewName` anim times.
+- `setup1()` — `lv_init`; optional log cb; LovyanGFX `tft.begin` / rotation 3; create partial buffer display + flush cb; tick cb; `ui_init`; speed up `ui_PresetNewName` anim times.
   - **Called from:** Arduino framework (Core 1).
   - **When:** Boot Core1 once.
-- `handleScreenModeChange(ScreenMode)` — On `signalFlag`, switch UI for modes 1–8 (load screens, show/hide panels, seed labels, clear flag).
+- `handleScreenModeChange()` — Atomically consumes `signalFlag` + `serialSignal` under the lock, latches the result into the Core1-local `currentMode`, then switches UI for modes 1–8 (load screens, show/hide panels, seed labels).
   - **Called from:** `loop1()`.
-  - **When:** Every `loop1` (early-out if `!signalFlag`).
-- `updateBottomMessageAndPresetUI(ScreenMode)` — For raw `serialSignal <= 5`: hide bottom message after timeout; cursor on new-name; redraw scroll/param on flags.
-  - **Called from:** `loop1()`.
-  - **When:** Every `loop1`.
-- `updateLevelBars(ScreenMode)` — Push OSC1/OSC2/SUB bar values when `levelBarFlag` set (all three in Silent).
+  - **When:** Every `loop1` (early-out if no pending signal).
+- `updateBottomMessageAndPresetUI(ScreenMode)` — For `mode <= SaveCompleted`: hide bottom message after timeout; consume `presetCharFlag`/`presetScrollFlag`/`paramChangeFlag` under the lock, then redraw cursor/scroll/param toast.
   - **Called from:** `loop1()`.
   - **When:** Every `loop1`.
-- `updateADSRBars()` — Push ADSR1/2 attack/decay/sustain/release bars when update flags set (scale `0.03125f *`).
+- `updateLevelBars(ScreenMode)` — Snapshot + clear the `levelBarFlag` bitmask under the lock; push OSC1/OSC2/SUB bar values for the set bits (all three in Silent).
   - **Called from:** `loop1()`.
   - **When:** Every `loop1`.
-- `updateCalibrationUI(ScreenMode)` — Calibration menu tab (`paramNumber` 190) or always `drawManualCalibration` in ManualCalibration.
+- `updateADSRBars()` — Snapshot + clear ADSR1/2 update flags and values under the lock; push attack/decay/sustain/release bars (scale `0.03125f *`).
   - **Called from:** `loop1()`.
   - **When:** Every `loop1`.
-- `loop()` — `serial_read_n()`. Optional `|` print on `timer200msFlag` is **commented-out**.
+- `updateCalibrationUI(ScreenMode)` — Only in `CalibrationMenu`/`ManualCalibration`; consumes `paramChangeFlag` under the lock. Calibration menu: tab switch on `PARAM_UI_MENU_POSITION`. Manual calibration: `drawManualCalibration()` — flag-driven, not every loop.
+  - **Called from:** `loop1()`.
+  - **When:** Every `loop1`, no-op unless a param update arrived.
+- `loop()` — `serial_read_n()`.
   - **Called from:** Arduino framework (Core 0).
   - **When:** Forever.
-- `loop1()` — `millisTimer()`; mode helpers above; `lv_timer_handler()`.
+- `loop1()` — Mode/UI helpers above; `lv_timer_handler()`.
   - **Called from:** Arduino framework (Core 1).
   - **When:** Forever.
 
-**`ScreenMode` ↔ `serialSignal`**
+**`ScreenMode` ↔ `serialSignal`** (enum now lives in `screen_mode.h`; `screen_mode_raw(ScreenMode)` returns the wire byte)
 
 | Value | Enum | UI role |
 |------:|------|---------|
@@ -137,9 +125,13 @@ Main sketch: dual-core split — Core0 UART RX, Core1 LVGL UI. Defines `ScreenMo
 | 7 | `CalibrationMenu` | Calibration tabs screen |
 | 8 | `ManualCalibration` | Manual calibration panel |
 
-### `globals.h`
+### `screen_mode.h`
 
-`blinkTitle1` bool. **Unused** (never read/written elsewhere). **No function definitions.**
+`enum class ScreenMode : uint8_t` (1–8, values unchanged from the previous in-`.ino` definition) + `screen_mode_raw(ScreenMode)` constexpr helper. Included by `Serial.h`, `displayParams.h`, and the main `.ino`. **No function definitions** beyond the constexpr helper.
+
+### `sram_hot.h`
+
+SRAM pinning switch. Defines `SCREEN_SRAM_HOT` (default **1**) and `SCREEN_HOT(fn)` — expands to `__not_in_flash_func(fn)` when the flag is on, or a no-op when off (`-DSCREEN_SRAM_HOT=0` A/Bs every pin at once). Included by `Serial.h` and the main `.ino`. Wraps the Core1 render path (`my_disp_flush`, `my_tick_get_cb`, `loop1` + its five poll helpers) and the Core0 parse path (`serial_read_n`, all `screenSerial1_handle_*` handlers, `screenSerial1_apply_param_from_frame`). Details, measured `.time_critical` cost, and the SPI wire-time ceiling: [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md) § SRAM pinning. **No function definitions.**
 
 ### `tusb_config.h`
 
@@ -151,20 +143,20 @@ TinyUSB device configuration (MIT header). Sketch does **not** include TinyUSB /
 
 ### `Serial.h`
 
-Externs for shared volatile UI/serial state (`presetNumber`, `paramNumber`/`paramValue`, ADSR/signal/char/level flags, `presetNameBytes`). Declares `serial_read_n()` / `init_screen_serial()`. `#define SERIAL_INNER_MAX_PAYLOAD 17` then includes slim framing headers. Commented `SERIAL_FRAMING_COBS`. Stale SIGNAL LIST comment in footer (superseded by `ScreenMode`). **No function definitions.**
+Declares `screenStateMutex` + `screen_state_lock()`/`screen_state_unlock()` inline wrappers (pico-sdk `mutex_t`, placed in `.mutex_array` so it's initialized before either core runs sketch code). Externs for shared state guarded by that lock (`presetNumber`, `paramNumber`/`paramValue`/`paramName`, ADSR/signal/char/level flags, `presetNameBytes`). `paramName` is `const char* volatile` (always points at a string literal set in `setDisplayParam`) — no more heap-backed `String`. `snapshot_preset_name()` copies `presetNameBytes` into a caller-owned buffer (caller must hold the lock). Declares `serial_read_n()` / `init_screen_serial()`. `#define SERIAL_INNER_MAX_PAYLOAD 17` then includes `screen_mode.h` + slim framing headers. Commented `SERIAL_FRAMING_COBS`. **No function definitions** besides the lock wrappers and the snapshot helper (both inline).
 
 ### `Serial.ino`
 
-State definitions + slim LUT parser (Serial1 = Input→Screen; Input is the only peer and relays the DCO gap `'x'` 154).
+State definitions + `screenStateMutex` definition + slim LUT parser (Serial1 = Input→Screen; Input is the only peer and relays the DCO gap `'x'` 154). Every handler takes the lock before touching shared state and releases it before returning.
 
 **Functions**
-- `screenSerial1_handle_adsr1` — `'a'`: load ADSR1 A/D/S/R **LE** → `updateADSR1Flag`.
+- `screenSerial1_handle_adsr1` — `'a'`: load ADSR1 A/D/S/R **LE** → `updateADSR1Flag`, under lock.
   - **Called from:** Serial1 parser.
   - **When:** Input `'a'`.
-- `screenSerial1_handle_adsr2` — `'b'`: load ADSR2 LE → `updateADSR2Flag`.
+- `screenSerial1_handle_adsr2` — `'b'`: load ADSR2 LE → `updateADSR2Flag`, under lock.
   - **Called from:** Serial1 parser.
   - **When:** Input `'b'`.
-- `screenSerial1_apply_param_from_frame` — Shared: `setDisplayParam`; set `paramChangeFlag` unless `serialSignal == 6` (Silent).
+- `screenSerial1_apply_param_from_frame` — Shared: takes the lock, `setDisplayParam`, sets `paramChangeFlag` unless `serialSignal == screen_mode_raw(ScreenMode::Silent)`.
   - **Called from:** Serial1 `'p'`/`'w'`/`'x'` handlers.
   - **When:** Input param frames.
 - `screenSerial1_handle_param16` — Decode slim `'p'` (3 B LE) → apply helper.
@@ -176,16 +168,16 @@ State definitions + slim LUT parser (Serial1 = Input→Screen; Input is the only
 - `screenSerial1_handle_param32` — Decode slim `'x'` (5 B LE) → apply.
   - **Called from:** Serial1 parser.
   - **When:** Input `'x'` — including the DCO calibration gap (154) that Input relays verbatim.
-- `screenSerial1_handle_param_nav_byte` — `'y'`: id + int8 → `updateParameters`; set `paramChangeFlag` for ids 150..155.
+- `screenSerial1_handle_param_nav_byte` — `'y'`: id + int8, under lock. For `PARAM_MANUAL_CALIBRATION_STAGE`/`OFFSET`, calls `applyNavParam(id, val)` (routes through the shared `screenParamTable`, same clamp/derive logic as the `'p'/'w'/'x'` path). Any id in `[PARAM_CALIBRATION_FLAG, PARAM_MANUAL_CALIBRATION_OFFSET_FROM_DCO]` (150..155) also sets `paramChangeFlag`.
   - **Called from:** Serial1 parser.
   - **When:** Input `'y'`.
-- `screenSerial1_handle_preset_scroll` — `'q'`: preset # + 16 chars → `presetScrollFlag`.
+- `screenSerial1_handle_preset_scroll` — `'q'`: preset # + 16 chars → `presetScrollFlag`, under lock.
   - **Called from:** Serial1 parser.
   - **When:** Input `'q'` (17-byte payload).
-- `screenSerial1_handle_signal` — `'s'`: `serialSignal` + `signalFlag`.
+- `screenSerial1_handle_signal` — `'s'`: `serialSignal` + `signalFlag`, under lock.
   - **Called from:** Serial1 parser.
   - **When:** Input `'s'`.
-- `screenSerial1_handle_char_select` — `'c'`: char index flags.
+- `screenSerial1_handle_char_select` — `'c'`: clamp index to 0..15, then `presetChar` + `presetCharFlag`, under lock.
   - **Called from:** Serial1 parser.
   - **When:** Input `'c'`.
 - `init_screen_serial()` — Fill `screenSerial1Lut` from `screenSerial1Commands[]`.
@@ -195,8 +187,6 @@ State definitions + slim LUT parser (Serial1 = Input→Screen; Input is the only
   - **When:** Every `loop` (Core0).
 
 Command / length inventory for the link is tabulated below (built from `screenSerial1Commands[]` + `SCREEN_SERIAL_*` constants).
-
-**Note:** `presetNameBytesOLD[17]` is defined/externed but **never read or written** → **Dead** storage.
 
 #### Payload length constants
 
@@ -220,10 +210,10 @@ Command / length inventory for the link is tabulated below (built from `screenSe
 | `'p'` | `screenSerial1_handle_param16` | `SCREEN_SERIAL_LEN_PARAM_16` | → `screenSerial1_apply_param_from_frame` |
 | `'w'` | `screenSerial1_handle_param8` | `SCREEN_SERIAL_LEN_PARAM_8` | Ignore ids 152/153; else reinterpret u8 → apply |
 | `'x'` | `screenSerial1_handle_param32` | `SCREEN_SERIAL_LEN_PARAM_32` | → apply helper |
-| `'y'` | `screenSerial1_handle_param_nav_byte` | `SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV` | → `updateParameters`; flag for ids 150..155 |
+| `'y'` | `screenSerial1_handle_param_nav_byte` | `SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV` | Stage/offset → `applyNavParam`; flag for ids 150..155 |
 | `'q'` | `screenSerial1_handle_preset_scroll` | `SCREEN_SERIAL1_LEN_PRESET_SCROLL` | Preset # + 16 chars → `presetScrollFlag` |
 | `'s'` | `screenSerial1_handle_signal` | `SCREEN_SERIAL_LEN_SIGNAL` | `serialSignal` + `signalFlag` |
-| `'c'` | `screenSerial1_handle_char_select` | `SCREEN_SERIAL_LEN_CHAR_SELECT` | `presetChar` + `presetCharFlag` |
+| `'c'` | `screenSerial1_handle_char_select` | `SCREEN_SERIAL_LEN_CHAR_SELECT` | Clamped `presetChar` + `presetCharFlag` |
 
 ### `serial_frame.h`
 
@@ -254,69 +244,62 @@ Copied from DCO (DCO-link sizes). Screen LUT uses its own lengths for Screen-onl
 
 **Functions**
 - `param_router_apply<ValueT>()` — Linear search descriptor table; invoke matching `apply`.
-  - **Called from:** `applyParamToModelAndSignals()`.
-  - **When:** Any `setDisplayParam()` path.
+  - **Called from:** `applyParamToModelAndSignals()`; `applyNavParam()`.
+  - **When:** Any `setDisplayParam()` path, and the `'y'` manual-calibration nav path.
 
 ### `params_def.h`
 
 Canonical shared `enum ParamId` (numeric IDs must stay stable across MCUs). **No function definitions.**
 
-### `parameters.ino`
-
-Lightweight `'y'` nav handler (Input → Screen), separate from display-name mapping.
-
-**Functions**
-- `updateParameters(byte, int32_t)` — Apply `PARAM_MANUAL_CALIBRATION_STAGE` / `OFFSET` to local cal model.
-  - **Called from:** `screenSerial1_handle_param_nav_byte`.
-  - **When:** Input `'y'` frames.
-  - Note: other ParamIds fall through `default` (no-op).
-
 ### `displayParams.h`
 
-UI model globals: hide timeout, mixer levels, ADSR1/2 words, manual-cal stage/offset/gap. **No function definitions** (variables live in header).
+UI model externs (hide timeout, mixer levels, ADSR1/2 words, manual-cal stage/offset/gap — definitions live in `displayParams.ino`). Defines the `LEVEL_BAR_OSC1`/`OSC2`/`SUB` bitmask constants for `levelBarFlag`. Declares `draw_param_1()`, `draw_preset_scroll_1(ScreenMode)`, `drawManualCalibration()`, `setDisplayParam()`, `applyNavParam(uint8_t, int32_t)`. Includes `screen_mode.h`.
 
 ### `displayParams.ino`
 
-Param → model router + LVGL label/bar draw helpers + human-readable `paramName` switch.
+Param → model router + LVGL label/bar draw helpers + human-readable `paramName` switch. All draw helpers snapshot shared state under `screen_state_lock()` into locals, release the lock, then call LVGL — the lock is never held across an `lv_*` call.
 
 **Functions**
-- `apply_param_osc1_level` / `osc2_level` / `osc3_level` / `sub_level` — Set OSC/SUB level + `levelBarFlag` 1/2/3 (OSC3 toast only until bar widget exists).
+- `apply_param_osc1_level` / `osc2_level` / `osc3_level` / `sub_level` — Set OSC/SUB level + OR the corresponding `LEVEL_BAR_*` bit into `levelBarFlag` (bitmask, so simultaneous OSC1+OSC2+SUB updates between two `loop1` iterations are never lost). OSC3 has no dedicated bar widget yet.
   - **Called from:** **param table only**.
   - **When:** Matching ParamId via `setDisplayParam`.
-- `apply_param_calibration_flag` — `v==0` → signal 2; `v==1` → signal 7; set `signalFlag`.
+- `apply_param_calibration_flag` — `v==0` → `ScreenMode::LoadSaveExit`; `v==1` → `ScreenMode::CalibrationMenu`; set `signalFlag`.
   - **Called from:** param table.
   - **When:** `PARAM_CALIBRATION_FLAG`.
-- `apply_param_manual_calibration_flag` — `v==1` → signal 8; `v==0` → signal 7; set `signalFlag`.
+- `apply_param_manual_calibration_flag` — `v==1` → `ScreenMode::ManualCalibration`; `v==0` → `ScreenMode::CalibrationMenu`; set `signalFlag`.
   - **Called from:** param table.
   - **When:** `PARAM_MANUAL_CALIBRATION_FLAG`.
-- `apply_param_manual_calibration_stage` — Stage + derived `manualCalibrationOSCN`.
-  - **Called from:** param table.
-  - **When:** `PARAM_MANUAL_CALIBRATION_STAGE` (also mirrored by `'y'` → `updateParameters`).
+- `apply_param_manual_calibration_stage` — Clamp stage 0..5, derive `manualCalibrationOSCN`.
+  - **Called from:** param table (both the `'p'/'w'/'x'` path and directly via `applyNavParam` for `'y'`).
+  - **When:** `PARAM_MANUAL_CALIBRATION_STAGE`.
 - `apply_param_manual_calibration_offset` — Set `offset`.
-  - **Called from:** param table.
+  - **Called from:** param table (both paths, same as above).
   - **When:** `PARAM_MANUAL_CALIBRATION_OFFSET`.
 - `apply_param_gap_from_dco` — Set `calibrationGap`.
   - **Called from:** param table.
   - **When:** `PARAM_GAP_FROM_DCO` — produced by the DCO and relayed verbatim by the Input controller as an `'x'` frame on Serial1.
-- `apply_param_ui_calibration_dismiss` — If signal 7 → signal 2 + `signalFlag`.
+- `apply_param_ui_calibration_dismiss` — If mode is `CalibrationMenu` → `LoadSaveExit` + `signalFlag`.
   - **Called from:** param table.
   - **When:** `PARAM_UI_CALIBRATION_DISMISS`.
-- `apply_param_ui_calibration_menu_mode` — Force signal 7 + `signalFlag`.
+- `apply_param_ui_calibration_menu_mode` — Force `ScreenMode::CalibrationMenu` + `signalFlag`.
   - **Called from:** param table.
   - **When:** `PARAM_UI_CALIBRATION_MENU_MODE`.
-- `applyParamToModelAndSignals()` — `param_router_apply` on `screenParamTable[]`.
+- `applyParamToModelAndSignals()` — `param_router_apply` on `screenParamTable[]` for `paramNumber`/`paramValue`.
   - **Called from:** `setDisplayParam()`.
   - **When:** Every display-param update.
-- `draw_param_1()` — Show bottom message panel with `paramName` + value; start hide timer.
+- `applyNavParam(uint8_t id, int32_t value)` — `param_router_apply` on `screenParamTable[]` for an explicit id/value pair (caller holds the lock).
+  - **Called from:** `screenSerial1_handle_param_nav_byte` (`'y'` stage/offset).
+  - **When:** Input `'y'` frames for `PARAM_MANUAL_CALIBRATION_STAGE`/`OFFSET`.
+- `draw_param_1()` — Snapshot `paramName`/`paramValue` under lock; show bottom message panel with name + value; start hide timer.
   - **Called from:** `updateBottomMessageAndPresetUI` when `paramChangeFlag`.
-  - **When:** Core1 UI path (`serialSignal <= 5`).
-- `draw_preset_scroll_1()` — Update preset number/name labels (or textarea char) from `serialSignal` cases 1–4.
+  - **When:** Core1 UI path (`mode <= SaveCompleted`).
+- `draw_preset_scroll_1(ScreenMode mode)` — Snapshot preset number/name/char position under lock; update labels (modes `PresetScroll`/`LoadSaveExit`/`SaveSelectPreset`) or textarea char (`SaveSetName`).
   - **Called from:** `handleScreenModeChange`; `updateBottomMessageAndPresetUI` when `presetScrollFlag`.
   - **When:** Mode change / scroll flag.
-- `drawManualCalibration()` — Labels for offset, oscillator N, gap, waveform SAW/TRI/SQR.
-  - **Called from:** `updateCalibrationUI` in `ManualCalibration`.
-  - **When:** Every `loop1` while in mode 8.
-- `setDisplayParam()` — Router apply, then ParamId → toast label switch (full catalog below).
+- `drawManualCalibration()` — Snapshot offset/oscN/stage/gap under lock; labels for offset, oscillator N, gap, waveform SAW/TRI/SQR.
+  - **Called from:** `updateCalibrationUI` when `paramChangeFlag` in `ManualCalibration`; also once on entering that mode from `handleScreenModeChange`.
+  - **When:** Flag-driven — **not** every `loop1` (previous behavior redrew unconditionally every iteration).
+- `setDisplayParam()` — Router apply, then ParamId → toast label switch (full catalog below). Runs on Core0 with the lock already held by the caller.
   - **Called from:** Serial1 `screenSerial1_apply_param_from_frame`.
   - **When:** Param frames (not `'y'`).
 
@@ -324,17 +307,17 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 
 | ParamId | Apply | Side effect |
 |---------|-------|-------------|
-| `PARAM_OSC1_LEVEL` (22) | `apply_param_osc1_level` | `OSC1Level` + `levelBarFlag=1` |
-| `PARAM_OSC2_LEVEL` (23) | `apply_param_osc2_level` | `OSC2Level` + `levelBarFlag=2` |
+| `PARAM_OSC1_LEVEL` (22) | `apply_param_osc1_level` | `OSC1Level` + `levelBarFlag |= LEVEL_BAR_OSC1` |
+| `PARAM_OSC2_LEVEL` (23) | `apply_param_osc2_level` | `OSC2Level` + `levelBarFlag |= LEVEL_BAR_OSC2` |
 | `PARAM_OSC3_LEVEL` (38) | `apply_param_osc3_level` | `OSC3Level` (no bar yet) |
-| `PARAM_SUB_LEVEL` (24) | `apply_param_sub_level` | `SUBLevel` + `levelBarFlag=3` |
-| `PARAM_CALIBRATION_FLAG` (150) | `apply_param_calibration_flag` | `v==0` → signal 2; `v==1` → signal 7; `signalFlag` |
-| `PARAM_MANUAL_CALIBRATION_FLAG` (151) | `apply_param_manual_calibration_flag` | `v==1` → signal 8; `v==0` → signal 7; `signalFlag` |
+| `PARAM_SUB_LEVEL` (24) | `apply_param_sub_level` | `SUBLevel` + `levelBarFlag |= LEVEL_BAR_SUB` |
+| `PARAM_CALIBRATION_FLAG` (150) | `apply_param_calibration_flag` | `v==0` → `LoadSaveExit`; `v==1` → `CalibrationMenu`; `signalFlag` |
+| `PARAM_MANUAL_CALIBRATION_FLAG` (151) | `apply_param_manual_calibration_flag` | `v==1` → `ManualCalibration`; `v==0` → `CalibrationMenu`; `signalFlag` |
 | `PARAM_MANUAL_CALIBRATION_STAGE` (152) | `apply_param_manual_calibration_stage` | `manualCalibrationStage` + `manualCalibrationOSCN` |
 | `PARAM_MANUAL_CALIBRATION_OFFSET` (153) | `apply_param_manual_calibration_offset` | `offset` |
 | `PARAM_GAP_FROM_DCO` (154) | `apply_param_gap_from_dco` | `calibrationGap` |
-| `PARAM_UI_CALIBRATION_DISMISS` (199) | `apply_param_ui_calibration_dismiss` | If signal 7 → signal 2 + `signalFlag` |
-| `PARAM_UI_CALIBRATION_MENU_MODE` (200) | `apply_param_ui_calibration_menu_mode` | Force signal 7 + `signalFlag` |
+| `PARAM_UI_CALIBRATION_DISMISS` (199) | `apply_param_ui_calibration_dismiss` | If `CalibrationMenu` → `LoadSaveExit` + `signalFlag` |
+| `PARAM_UI_CALIBRATION_MENU_MODE` (200) | `apply_param_ui_calibration_menu_mode` | Force `CalibrationMenu` + `signalFlag` |
 
 #### `setDisplayParam()` ParamId catalog (toast labels)
 
@@ -423,6 +406,8 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 32 | `PARAM_PORTAMENTO_MODE` | Enum only; falls through `default` |
 | 101 | `PARAM_CALIBRATION_MODE` | Enum only; falls through `default` |
 | 155 | `PARAM_MANUAL_CALIBRATION_OFFSET_FROM_DCO` | No toast case; `'y'` may set `paramChangeFlag` (ids 150..155) but no label |
+| 156 | `PARAM_MANUAL_CALIBRATION_STORE` | Enum parity with DCO/Input only; no local handling |
+| 170–173 | `PARAM_PRESET_SAVE`/`_LOAD`/`_DUMP`, `PARAM_CAL_DUMP` | DCO-local preset store / dump commands ([`DCO/docs/PRESET_STORE.md`](../../../DCO/docs/PRESET_STORE.md)); enum parity only, no local handling |
 
 #### SquareLine `ui_*` widgets referenced from project `.ino`
 
@@ -432,22 +417,22 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | `ui_Main` | `handleScreenModeChange` (LoadSaveExit) |
 | `ui_MANUALCALIBRATION` | CalibrationMenu / ManualCalibration |
 | `ui_PresetSavePanel` | mode change hide/show |
-| `ui_PresetNewName` | setup1 anim; save name / cursor / scroll case 4 |
+| `ui_PresetNewName` | setup1 anim; save name / cursor / scroll case `SaveSetName` |
 | `ui_PresetSavedMesage` | SaveCompleted; toast hide |
 | `ui_PresetNOLD` / `ui_PresetNOLDShadow` | SaveSelectPreset |
 | `ui_PresetNameOLD` / `ui_PresetNameOLDShadow` | SaveSelectPreset |
 | `ui_BottomMessagePanel` | toast hide; `draw_param_1` show |
 | `ui_CommandMessage` / `ui_CommandMessageShadow` | `draw_param_1` |
 | `ui_CommandValue` / `ui_CommandValueShadow` | `draw_param_1` |
-| `ui_PresetN` / `ui_PresetNShadow` | `draw_preset_scroll_1` cases 1–2 |
-| `ui_PresetName` / `ui_PresetNameShadow` | `draw_preset_scroll_1` cases 1–2 |
-| `ui_PresetNNew` / `ui_PresetNNewShadow` | `draw_preset_scroll_1` case 3 |
-| `ui_PresetNameNew` / `ui_PresetNameNewShadow` | `draw_preset_scroll_1` case 3 |
+| `ui_PresetN` / `ui_PresetNShadow` | `draw_preset_scroll_1` (`PresetScroll`/`LoadSaveExit`) |
+| `ui_PresetName` / `ui_PresetNameShadow` | `draw_preset_scroll_1` (`PresetScroll`/`LoadSaveExit`) |
+| `ui_PresetNNew` / `ui_PresetNNewShadow` | `draw_preset_scroll_1` (`SaveSelectPreset`) |
+| `ui_PresetNameNew` / `ui_PresetNameNewShadow` | `draw_preset_scroll_1` (`SaveSelectPreset`) |
 | `ui_OSC1Level` / `ui_OSC2Level` / `ui_SUBLevel` | `updateLevelBars` |
 | `ui_ADSR1AttackBar` / `ui_ADSR1DecayBar` / `ui_ADSR1SustainBar` / `ui_ADSR1ReleaseBar` | `updateADSRBars` |
 | `ui_ADSR2AttackBar` / `ui_ADSR2DecayBar` / `ui_ADSR2SustainBar` / `ui_ADSR2ReleaseBar` | `updateADSRBars` |
-| `ui_calibrationTabs` | `updateCalibrationUI` (param 190) |
-| `ui_manualCalibrationPanel` | mode 7/8 show/hide |
+| `ui_calibrationTabs` | `updateCalibrationUI` (`PARAM_UI_MENU_POSITION`) |
+| `ui_manualCalibrationPanel` | mode `CalibrationMenu`/`ManualCalibration` show/hide |
 | `ui_calibrationOffset` / `ui_calibrationOffsetShadow` | `drawManualCalibration` |
 | `ui_oscillatorN` / `ui_oscillatorNShadow` | `drawManualCalibration` |
 | `ui_calibrationGap` / `ui_calibrationGapShadow` | `drawManualCalibration` |
@@ -455,39 +440,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 
 ---
 
-## 3. Timing / utilities
-
-### `timers_millis.h`
-
-Soft-timer timestamps + flags (99 µs … 500 ms) and blink toggles. **No function definitions.**
-
-### `timers_millis.ino`
-
-**Functions**
-- `millisTimer()` — Clear then set soft flags for 5/11/23/31/67/100/150/200 ms (µs timers and 500 ms are **commented-out**).
-  - **Called from:** `loop1()` every iteration.
-  - **When:** Every `loop1`.
-  - Note: **no live readers** of these flags in project sources (only commented `timer200msFlag` in `loop`) → flags are effectively **Dead** consumers today.
-
-### `auxiliary.h`
-
-`blinkTimer*` / `blinker*Flag` globals. **No function definitions.**
-
-### `auxiliary.ino`
-
-**Functions**
-- `blinker1()` — Toggle `blinker1Flag` every 70 ms.
-  - **Called from:** **none (dead)**.
-- `blinker2()` — Intended blinker; uses `blinkTimer1` threshold wrongly and writes `blinker2Flag = !blinker1Flag`.
-  - **Called from:** **none (dead)**.
-
----
-
-## 4. Dead / unused / legacy (sketch root)
-
-### `ui.ino`
-
-**Entirely commented-out** former TFT_eSPI + LVGL demo sketch (`setup`/`loop`, flush/touch/tick). No active definitions. Live equivalents live in `RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX.ino`.
+## 3. Dead / unused / legacy (sketch root)
 
 ### `tft_setup.h`
 
@@ -505,9 +458,11 @@ Legacy **TFT_eSPI** `User_Setup`-style pin/driver config (ILI9341, etc.). **Not 
 |------|--------|---------|
 | `src/felanew_U8g2/` | Unused / legacy | Second vendored U8g2 tree (~122 files). Not included by the live sketch. Do not inventory per-file. |
 
+**Removed** (previously listed here, now deleted — see repo history if needed): `globals.h` (`blinkTitle1`, unused), `timers_millis.h`/`.ino` (soft timers with no live readers), `auxiliary.h`/`.ino` (dead blinker helpers), `ui.ino` (fully commented-out legacy TFT_eSPI demo), `parameters.ino` (`updateParameters` — logic folded into `apply_param_manual_calibration_stage`/`_offset` in `displayParams.ino`, reached from both the `'p'/'w'/'x'` router and the `'y'` path via `applyNavParam`), and `presetNameString`/`presetNameBytesOLD` (write-only globals in the old `Serial.h`/`Serial.ino`).
+
 ---
 
-## 5. Documentation
+## 4. Documentation
 
 All detailed docs live under `docs/` (this file included). Sketch/repo entry `README.md` is linked as `../README.md`.
 
@@ -515,14 +470,14 @@ All detailed docs live under `docs/` (this file included). Sketch/repo entry `RE
 |------|--------|---------|
 | `README.md` (via `../README.md`) | Current | Overview / build / doc index. |
 | `docs/SYSTEM_OVERVIEW.md` | Current | Stub pointing to the canonical DCO overview (+ local UART roles). |
-| `docs/UI_AND_SERIAL.md` | Current | ScreenMode, UART frames, LVGL update path. |
+| `docs/UI_AND_SERIAL.md` | Current | ScreenMode, UART frames, cross-core lock, LVGL update path. |
 | `docs/HARDWARE.md` | Current | Display / UART / pin map (LovyanGFX board config). |
 | `docs/REFERENCE_AI.md` | Current | Deep semantic map. |
 | `docs/FILE_INDEX.md` | Current | This file — files, functions, call sites. |
 
 ---
 
-## 6. External libraries (not inventoriable here)
+## 5. External libraries (not inventoriable here)
 
 | Library / path | Used by |
 |----------------|---------|
@@ -531,27 +486,29 @@ All detailed docs live under `docs/` (this file included). Sketch/repo entry `RE
 | `lgfx_user/LGFX_RP2040_FELA.hpp` | Board panel/bus pin config (under LovyanGFX) |
 | `ui.h` (SquareLine `libraries/ui`) | Screens/widgets (`ui_Main`, bars, labels, …) |
 | Arduino `Serial` / `Serial1` | Core0 parser + USB debug |
+| pico-sdk `pico/mutex.h` | `screenStateMutex` cross-core lock |
 
-Unused **inside this sketch folder:** `fela_U8g2/`, `src/felanew_U8g2/`, `ui.ino`, `tft_setup.h` (see § dead/legacy above).
+Unused **inside this sketch folder:** `fela_U8g2/`, `src/felanew_U8g2/`, `tft_setup.h` (see § dead/legacy above).
 
 ---
 
-## Quick “where do I change X?”
+## Quick "where do I change X?"
 
 | Goal | Start here |
 |------|------------|
 | Boot / dual-core split | `RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX.ino` (`setup` / `setup1` / `loop` / `loop1`) |
-| UART pins / baud | `setup()` Serial1 RX13/TX12 @ 2.5 M IRQ |
-| ScreenMode / signal 1–8 | `ScreenMode` enum + `handleScreenModeChange`; RX `'s'` handlers in `Serial.ino` |
+| UART pins / baud | `setup()` Serial1 RX13/TX12 @ 2.5 M IRQ |
+| Cross-core state / locking | `screen_state_lock()`/`screen_state_unlock()` in `Serial.h`; keep LVGL calls outside the locked section |
+| ScreenMode / signal 1–8 | `ScreenMode` enum in `screen_mode.h` + `handleScreenModeChange`; RX `'s'` handlers in `Serial.ino` |
 | Serial1 (Input) RX commands | `screenSerial1Commands[]` table in this file + handlers in `Serial.ino` |
 | Param display names / remaps | `setDisplayParam()` catalog in this file; switch in `displayParams.ino` |
 | Param → levels / cal / mode signals | `screenParamTable[]` map in this file; `apply_param_*` in `displayParams.ino` |
-| `'y'` nav (stage/offset only) | `parameters.ino` `updateParameters` |
+| `'y'` nav (stage/offset only) | `screenSerial1_handle_param_nav_byte` in `Serial.ino` → `applyNavParam` in `displayParams.ino` (same table as `'p'/'w'/'x'`) |
 | New ParamId | `params_def.h` → display switch and/or `screenParamTable` apply |
 | Preset scroll / name UI | `draw_preset_scroll_1` + `'q'`/`'c'` handlers |
-| Mixer / ADSR bars | `updateLevelBars` / `updateADSRBars`; level applies + `'a'`/`'b'` |
-| Manual calibration UI | `drawManualCalibration` + mode 7/8 in `handleScreenModeChange` |
+| Mixer / ADSR bars | `updateLevelBars` (bitmask `LEVEL_BAR_*`) / `updateADSRBars`; level applies + `'a'`/`'b'` |
+| Manual calibration UI | `drawManualCalibration` (flag-driven) + mode `CalibrationMenu`/`ManualCalibration` in `handleScreenModeChange` |
 | LVGL screens / widgets | `ui_*` inventory in this file; SquareLine `ui.h`; `ui_init` in `setup1` |
 | Panel / SPI / resolution | `LGFX_RP2040_FELA.hpp` + `screenWidth`/`screenHeight` in main `.ino` |
-| Soft timer rates | `timers_millis.ino` (flags unused until something reads them) |
-| Legacy TFT_eSPI / U8g2 | `tft_setup.h`, `ui.ino`, `fela_U8g2/`, `src/felanew_U8g2/` — leave alone |
+| SRAM pinning / diagnostic overlay | `sram_hot.h` (`SCREEN_SRAM_HOT`); `SCREEN_PERF_MONITOR` at top of main `.ino` (hides/pauses LVGL sysmon); theory + measured cost in `UI_AND_SERIAL.md` § SRAM pinning |
+| Legacy TFT_eSPI / U8g2 | `tft_setup.h`, `fela_U8g2/`, `src/felanew_U8g2/` — leave alone |

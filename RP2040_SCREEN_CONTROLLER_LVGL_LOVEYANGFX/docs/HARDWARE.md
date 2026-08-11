@@ -24,7 +24,7 @@ Scoped to **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`**.
 | LVGL resolution | 480 × 320 |
 | Rotation | `tft.setRotation(3)` |
 | Flush | Partial buffer (~1/10 screen); `my_disp_flush` → `pushPixels` |
-| Touch | `my_touchpad_read` is **empty** (display-only) |
+| Touch | None — display-only. No LVGL input device is registered (the previous no-op touchpad indev/callback was removed). |
 
 **Do not use `tft_setup.h` for pin truth** — it is a leftover TFT_eSPI / ILI9341 config and is **not included** by the live sketch.
 
@@ -36,9 +36,10 @@ Scoped to **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`**.
 |------|--------|
 | `fela_U8g2/` | Vendored U8g2 — **not referenced** by live sources |
 | `src/felanew_U8g2/` | Second U8g2 copy — **unused** |
-| `ui.ino` | Fully commented SquareLine/TFT_eSPI template |
 | `tft_setup.h` | TFT_eSPI leftovers |
 | `tusb_config.h` | TinyUSB MIDI config present; USB MIDI product strings commented in `setup` |
+
+`ui.ino` (a fully commented-out SquareLine/TFT_eSPI template) has been removed from the sketch folder.
 
 ---
 
