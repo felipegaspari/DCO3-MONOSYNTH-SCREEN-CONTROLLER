@@ -24,7 +24,7 @@ enum InputSerialCmd : uint8_t {
   INPUT_CMD_ADSR3_BLOCK  = 'c',  // EnvDCO times (maps to ADSR1_* on DCO)
   INPUT_CMD_FILTER_BLOCK = 'd',
   INPUT_CMD_PARAM_16     = 'p',  // id + int16 LE
-  INPUT_CMD_PRESET_NAME  = 'q',  // 8 ASCII chars
+  INPUT_CMD_PRESET_NAME  = 'q',  // 16 ASCII chars
   INPUT_CMD_PARAM_32     = 'x',  // id + u32 LE (gap 154 / cal 155 DCO→Input)
 };
 
@@ -40,8 +40,14 @@ static constexpr uint8_t INPUT_SERIAL_LEN_FILTER_BLOCK = 8;
 // Param ('p'): [id:u8][value:i16 LE]
 static constexpr uint8_t INPUT_SERIAL_LEN_PARAM_16     = 3;
 
-// Preset name ('q'): 8 ASCII bytes (space-padded).
-static constexpr uint8_t INPUT_SERIAL_LEN_PRESET_NAME  = 8;
+// Preset name ('q'): 16 ASCII bytes (space-padded).
+//
+// Not the length this board dispatches on: the frame the Screen actually
+// receives is Input's *preset scroll*, which prefixes the slot number, so
+// Serial.ino matches 'q' against its own SCREEN_SERIAL1_LEN_PRESET_SCROLL (17).
+// This constant describes the panel-to-voice-side 'q' and is kept only so the
+// shared header stays consistent across boards.
+static constexpr uint8_t INPUT_SERIAL_LEN_PRESET_NAME  = 16;
 
 // Param32 ('x'): [id:u8][value:u32 LE] — DCO→Input gap/cal; Input relays 154 to Screen.
 static constexpr uint8_t INPUT_SERIAL_LEN_PARAM_32     = 5;

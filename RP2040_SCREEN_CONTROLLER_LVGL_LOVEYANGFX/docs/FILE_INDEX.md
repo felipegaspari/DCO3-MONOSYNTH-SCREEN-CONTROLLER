@@ -133,9 +133,17 @@ Main sketch: dual-core split — Core0 UART RX, Core1 LVGL UI. Includes `ScreenM
 
 SRAM pinning switch. Defines `SCREEN_SRAM_HOT` (default **1**) and `SCREEN_HOT(fn)` — expands to `__not_in_flash_func(fn)` when the flag is on, or a no-op when off (`-DSCREEN_SRAM_HOT=0` A/Bs every pin at once). Included by `Serial.h` and the main `.ino`. Wraps the Core1 render path (`my_disp_flush`, `my_tick_get_cb`, `loop1` + its five poll helpers) and the Core0 parse path (`serial_read_n`, all `screenSerial1_handle_*` handlers, `screenSerial1_apply_param_from_frame`). Details, measured `.time_critical` cost, and the SPI wire-time ceiling: [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md) § SRAM pinning. **No function definitions.**
 
-### `tusb_config.h`
+### `screen_target.h`
 
-TinyUSB device configuration (MIT header). Sketch does **not** include TinyUSB / MIDI — config unused by current build. **No function definitions.**
+Per-synth UI differences, so one source tree serves both the DCO3 monosynth and the DCO4 4x2 voice board. Defines `enum class CalTopology { Monosynth3Osc, Voices4x2 }`, the compile-time default `SCREEN_CAL_TOPOLOGY_DEFAULT` (overridable with `-D`), and the single accessor `screen_cal_topology()` that every caller goes through. Derive helpers: `screen_topology_from_osc_count()`, `screen_cal_stage_max()` (5 or 7), `screen_cal_stage_to_osc()` (`stage/2` or `stage`), `screen_cal_stage_label()` (SAW/TRI/SQR or DCO chip A/B), `screen_adsr3_osc_select_label()`. Included by `displayParams.h`. All definitions are `inline`/`constexpr`; see [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md) § Voice topology.
+
+### `LGFX_RP2040_FELA.hpp`
+
+Board panel/bus pin config for LovyanGFX. Lives in this sketch folder (included as `"LGFX_RP2040_FELA.hpp"`) — keep it here; a LovyanGFX library update will delete any `lgfx_user/` copies. **No function definitions.**
+
+### `tusb_config.h.legacy`
+
+Old TinyUSB MIDI-only device configuration (MIT header). Sketch does **not** include TinyUSB / MIDI; renamed with the `.legacy` suffix so it cannot shadow the Pico SDK USB Serial config. **No function definitions.**
 
 ---
 
@@ -483,7 +491,7 @@ All detailed docs live under `docs/` (this file included). Sketch/repo entry `RE
 |----------------|---------|
 | `lvgl` | `setup1` / `loop1` / draw helpers |
 | `LovyanGFX` | `LGFX tft` instance |
-| `lgfx_user/LGFX_RP2040_FELA.hpp` | Board panel/bus pin config (under LovyanGFX) |
+| sketch `LGFX_RP2040_FELA.hpp` | Board panel/bus pin config (local; not under LovyanGFX) |
 | `ui.h` (SquareLine `libraries/ui`) | Screens/widgets (`ui_Main`, bars, labels, …) |
 | Arduino `Serial` / `Serial1` | Core0 parser + USB debug |
 | pico-sdk `pico/mutex.h` | `screenStateMutex` cross-core lock |
@@ -511,4 +519,5 @@ Unused **inside this sketch folder:** `fela_U8g2/`, `src/felanew_U8g2/`, `tft_se
 | LVGL screens / widgets | `ui_*` inventory in this file; SquareLine `ui.h`; `ui_init` in `setup1` |
 | Panel / SPI / resolution | `LGFX_RP2040_FELA.hpp` + `screenWidth`/`screenHeight` in main `.ino` |
 | SRAM pinning / diagnostic overlay | `sram_hot.h` (`SCREEN_SRAM_HOT`); `SCREEN_PERF_MONITOR` at top of main `.ino` (hides/pauses LVGL sysmon); theory + measured cost in `UI_AND_SERIAL.md` § SRAM pinning |
+| Monosynth vs 4x2 UI differences | `screen_target.h` — never add a per-project `#if` elsewhere; add a derive helper instead |
 | Legacy TFT_eSPI / U8g2 | `tft_setup.h`, `fela_U8g2/`, `src/felanew_U8g2/` — leave alone |

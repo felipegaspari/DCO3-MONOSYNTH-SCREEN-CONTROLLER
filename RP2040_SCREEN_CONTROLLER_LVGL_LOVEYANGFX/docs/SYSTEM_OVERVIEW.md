@@ -15,6 +15,6 @@ Do not fork a second full system document here.
 | `Serial` | USB | 1 000 000 | Debug |
 | `Serial1` | GP13 / GP12 | 2 500 000 | Input controller — receive-only: RX GP13 from Input `Serial2` TX (GP4); TX GP12 is unconnected |
 
-Display SPI/panel pins live in the external board header `lgfx_user/LGFX_RP2040_FELA.hpp` (not in this folder). LVGL logical size here: **480×320**.
+Display SPI/panel pins live in sketch `LGFX_RP2040_FELA.hpp` (keep it here; a LovyanGFX update will delete `lgfx_user/` copies). LVGL logical size here: **480×320**.
 
 Detail: [`HARDWARE.md`](HARDWARE.md), [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md), [`REFERENCE_AI.md`](REFERENCE_AI.md).

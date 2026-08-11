@@ -88,12 +88,14 @@ static void apply_param_manual_calibration_flag(int32_t v) {
 }
 
 static void apply_param_manual_calibration_stage(int32_t v) {
-  // Clamp to monosynth 3-osc stage range (0..5).
+  const CalTopology topology = screen_cal_topology();
+  const int32_t     stageMax = (int32_t)screen_cal_stage_max(topology);
+
   int32_t stage = v;
-  if (stage < 0) stage = 0;
-  if (stage > 5) stage = 5;
+  if (stage < 0)        stage = 0;
+  if (stage > stageMax) stage = stageMax;
   manualCalibrationStage = (uint8_t)stage;
-  manualCalibrationOSCN  = manualCalibrationStage / 2;
+  manualCalibrationOSCN  = screen_cal_stage_to_osc(topology, manualCalibrationStage);
 }
 
 static void apply_param_manual_calibration_offset(int32_t v) {
@@ -226,18 +228,9 @@ void drawManualCalibration() {
   lv_label_set_text(ui_calibrationGap, strLong);
   lv_label_set_text(ui_calibrationGapShadow, strLong);
 
-  // Monosynth: 3 oscillators × 2 stages (0–5). Odd stages 1,5 = TRI (OSC1/OSC3);
-  // odd stage 3 = SQR (OSC2), matching Input/DCO manual-cal conventions.
-  if ((stage % 2) == 0) {
-    lv_label_set_text(ui_waveform, "SAW");
-    lv_label_set_text(ui_waveformShadow, "SAW");
-  } else if (stage == 1 || stage == 5) {
-    lv_label_set_text(ui_waveform, "TRI");
-    lv_label_set_text(ui_waveformShadow, "TRI");
-  } else {
-    lv_label_set_text(ui_waveform, "SQR");
-    lv_label_set_text(ui_waveformShadow, "SQR");
-  }
+  const char* waveformText = screen_cal_stage_label(screen_cal_topology(), stage);
+  lv_label_set_text(ui_waveform, waveformText);
+  lv_label_set_text(ui_waveformShadow, waveformText);
 }
 
 // Apply parameter effects to the internal "model" state (levels, calibration,
@@ -311,26 +304,7 @@ void setDisplayParam() {
       paramName = " ADSR2 Restart";
       break;
     case ParamId::PARAM_ADSR3_TO_OSC_SELECT:
-      switch (paramValue) {
-        case 0:
-          paramName = " ADSR3 TO OSC1";
-          break;
-        case 1:
-          paramName = " ADSR3 TO OSC2";
-          break;
-        case 2:
-          paramName = " ADSR3 TO BOTH";
-          break;
-        case 3:
-          paramName = " ADSR3 TO OSC3";
-          break;
-        case 4:
-          paramName = " ADSR3 TO ALL";
-          break;
-        default:
-          paramName = " ADSR3 TO OSC";
-          break;
-      }
+      paramName = screen_adsr3_osc_select_label(screen_cal_topology(), paramValue);
       break;
     case ParamId::PARAM_LFO1_WAVEFORM:
       paramName = " LFO1 Shape";

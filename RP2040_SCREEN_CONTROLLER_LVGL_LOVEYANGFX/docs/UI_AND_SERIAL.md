@@ -99,6 +99,23 @@ The `'y'` nav path (`screenSerial1_handle_param_nav_byte`) routes manual-calibra
 
 ---
 
+## Voice topology (`screen_target.h`)
+
+This sketch is meant to be the single screen firmware for both synths, so the places where the two boards disagree are isolated in `screen_target.h` rather than forked per project. The manual-calibration screen is the only UI that genuinely differs:
+
+| | `Monosynth3Osc` (DCO3) | `Voices4x2` (DCO4-REBORN) |
+|---|---|---|
+| Stage range | 0–5 (3 osc × 2 waveform stages) | 0–7 (8 osc × 1 stage) |
+| `ui_oscillatorN` | `stage / 2` | `stage` |
+| `ui_waveform` | SAW / TRI / SQR | DCO chip A / B |
+| `PARAM_ADSR3_TO_OSC_SELECT` | OSC1 / OSC2 / BOTH / OSC3 / ALL | A / B / A+B |
+
+Every caller reads `screen_cal_topology()` and passes the result to a derive helper. **Do not add a per-project `#if` anywhere else** — add a helper here instead, otherwise the two projects cannot share one commit.
+
+Today the accessor returns the compile-time `SCREEN_CAL_TOPOLOGY_DEFAULT` (`Monosynth3Osc` unless overridden with `-DSCREEN_CAL_TOPOLOGY_DEFAULT=CalTopology::Voices4x2`). The intended end state is for the synth to announce its oscillator count over the serial link and for the accessor to return that instead, with the compile-time value demoted to a pre-announcement fallback; `screen_topology_from_osc_count()` already does that mapping. That step is deferred until the parameter set, Input controller, and `dco_control` unification lands, since the announcement has to be part of the unified protocol and the DCO — not the screen or the Input — is the only board that actually knows the hardware.
+
+---
+
 ## SRAM pinning (`sram_hot.h`)
 
 Both cores fetch instructions through the RP2040's single XIP flash bus and its 16 KB cache. A Core0 cache miss stalls the same bus Core1 uses to fetch LVGL's render loops, so pinning Core0's parser into SRAM (`.time_critical`, copied from flash at boot) buys Core1 speed too — see [`DCO/docs/MEMORY.md`](../../../DCO/docs/MEMORY.md) for the general theory (heap vs. static-RAM tax, the callee rule, the dump/A-B procedure) instead of repeating it here.
@@ -129,6 +146,6 @@ Override at compile time with `-DSCREEN_SRAM_HOT=0` to A/B every pin at once (`a
 
 Net cost: **+2,896 B** of static RAM (~1.4% of the ~201 KB heap budget), well under the ~120 KB the DCO board runs at. About 2.4 KB of that is the pinned function bodies themselves (`loop1` 1264 B including its inlined helpers, `serial_read_n` 252 B, `my_disp_flush` 340 B, the nine handlers + shared helper 476 B combined, `my_tick_get_cb` 8 B); the remainder is linker-inserted branch veneers for RAM↔flash calls crossing the Thumb branch-range limit (e.g. a pinned handler calling `lv_bar_set_value` or `itoa` in flash) — expect a handful of extra veneers per newly pinned call site that reaches into flash.
 
-**What pinning cannot fix:** `Panel_ILI9488::setColorDepth_impl` forces `rgb888_3Byte` whenever the bus is SPI, and `cfg.freq_write = 80000000` in `lgfx_user/LGFX_RP2040_FELA.hpp` clamps to the RP2040's ~62.5 MHz SPI ceiling — a full 480×320 redraw is dominated by roughly 59 ms of wire time that no amount of SRAM pinning touches. Pinning pays off on partial redraws and cross-core bus contention, not full-screen flushes.
+**What pinning cannot fix:** `Panel_ILI9488::setColorDepth_impl` forces `rgb888_3Byte` whenever the bus is SPI, and `cfg.freq_write = 80000000` in sketch `LGFX_RP2040_FELA.hpp` clamps to the RP2040's ~62.5 MHz SPI ceiling — a full 480×320 redraw is dominated by roughly 59 ms of wire time that no amount of SRAM pinning touches. Pinning pays off on partial redraws and cross-core bus contention, not full-screen flushes.
 
 **FPS/CPU overlay:** Toggle with `SCREEN_PERF_MONITOR` at the top of the main `.ino` (default **1**). Set to **0** for shipping — `setup1()` then calls `lv_sysmon_hide_performance` + `lv_sysmon_performance_pause` (LVGL auto-shows the label on `lv_display_create`). `LV_USE_PERF_MONITOR` stays **1** in `libraries/lv_conf.h` so those APIs exist. `LV_USE_MEM_MONITOR` stays **0** — it requires `LV_USE_STDLIB_MALLOC = LV_STDLIB_BUILTIN`, and this project uses `LV_STDLIB_CLIB`.

@@ -20,7 +20,7 @@ Scoped to **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`**.
 | Item | Value |
 |------|--------|
 | Driver stack | **LovyanGFX** (`LGFX tft`) |
-| Board config | External `#include <lgfx_user/LGFX_RP2040_FELA.hpp>` |
+| Board config | Sketch `#include "LGFX_RP2040_FELA.hpp"` (keep it here — not under LovyanGFX) |
 | LVGL resolution | 480 × 320 |
 | Rotation | `tft.setRotation(3)` |
 | Flush | Partial buffer (~1/10 screen); `my_disp_flush` → `pushPixels` |
@@ -37,7 +37,7 @@ Scoped to **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`**.
 | `fela_U8g2/` | Vendored U8g2 — **not referenced** by live sources |
 | `src/felanew_U8g2/` | Second U8g2 copy — **unused** |
 | `tft_setup.h` | TFT_eSPI leftovers |
-| `tusb_config.h` | TinyUSB MIDI config present; USB MIDI product strings commented in `setup` |
+| `tusb_config.h.legacy` | Old TinyUSB MIDI-only config (`CFG_TUD_CDC 0`). Renamed so it cannot shadow Pico SDK USB Serial. |
 
 `ui.ino` (a fully commented-out SquareLine/TFT_eSPI template) has been removed from the sketch folder.
 

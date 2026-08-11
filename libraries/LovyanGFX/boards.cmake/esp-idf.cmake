@@ -6,8 +6,10 @@ set(COMPONENT_ADD_INCLUDEDIRS
 file(GLOB SRCS
      ${LGFX_ROOT}/src/lgfx/Fonts/efont/*.c
      ${LGFX_ROOT}/src/lgfx/Fonts/IPA/*.c
+     ${LGFX_ROOT}/src/lgfx/Fonts/lvgl/*.c
      ${LGFX_ROOT}/src/lgfx/utility/*.c
      ${LGFX_ROOT}/src/lgfx/v1/*.cpp
+     ${LGFX_ROOT}/src/lgfx/v1/lv_font/*.c
      ${LGFX_ROOT}/src/lgfx/v1/misc/*.cpp
      ${LGFX_ROOT}/src/lgfx/v1/panel/*.cpp
      ${LGFX_ROOT}/src/lgfx/v1/platforms/arduino_default/*.cpp
@@ -15,13 +17,20 @@ file(GLOB SRCS
      ${LGFX_ROOT}/src/lgfx/v1/platforms/esp32c3/*.cpp
      ${LGFX_ROOT}/src/lgfx/v1/platforms/esp32s2/*.cpp
      ${LGFX_ROOT}/src/lgfx/v1/platforms/esp32s3/*.cpp
+     ${LGFX_ROOT}/src/lgfx/v1/platforms/esp32p4/*.cpp
      ${LGFX_ROOT}/src/lgfx/v1/touch/*.cpp
      )
 
 set(COMPONENT_SRCS ${SRCS})
 
-if (IDF_VERSION_MAJOR GREATER_EQUAL 5)
-    set(COMPONENT_REQUIRES nvs_flash efuse esp_lcd driver esp_timer)
+if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
+    set(COMPONENT_REQUIRES nvs_flash efuse esp_lcd driver esp_timer esp_mm esp_driver_ledc esp_driver_i2s hal)
+elseif (IDF_VERSION_MAJOR GREATER_EQUAL 5)
+    if(IDF_VERSION_MINOR GREATER_EQUAL 1)
+        set(COMPONENT_REQUIRES nvs_flash efuse esp_lcd driver esp_timer esp_mm)
+    else()
+        set(COMPONENT_REQUIRES nvs_flash efuse esp_lcd driver esp_timer)
+    endif()
 elseif ((IDF_VERSION_MAJOR EQUAL 4) AND (IDF_VERSION_MINOR GREATER 3) OR IDF_VERSION_MAJOR GREATER 4)
     set(COMPONENT_REQUIRES nvs_flash efuse esp_lcd)
 else()

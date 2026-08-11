@@ -6,12 +6,14 @@
 #define SCREEN_PERF_MONITOR 0
 #endif
 
+#define SCREEN_SRAM_HOT 1
+
 #include <lvgl.h>
 #define LGFX_USE_V1
 #define LV_COLOR_16_SWAP 0
 
 #include <LovyanGFX.hpp>
-#include <lgfx_user/LGFX_RP2040_FELA.hpp>
+#include "LGFX_RP2040_FELA.hpp"
 
 #include <ui.h>
 
@@ -64,6 +66,10 @@ uint32_t paramChangeLastMillis = 0;
 // signal (or apply_param_* mode change) raises signalFlag and Core1 latches
 // the new mode here in handleScreenModeChange().
 static ScreenMode currentMode = ScreenMode::PresetScroll;
+
+#if defined(NO_USB) || defined(DISABLE_USB_SERIAL)
+#error This sketch needs USB Serial (Serial.begin). Arduino IDE: Tools -> USB Stack -> Pico SDK (not No USB).
+#endif
 
 /////////////////////////////////////////////////////////// setup ///////////////////////////////////////////////////
 // Core0 boot: USB debug Serial + Serial1 (Input, the only peer link).

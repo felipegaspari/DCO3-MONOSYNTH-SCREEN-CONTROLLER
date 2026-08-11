@@ -38,8 +38,7 @@
 #ifndef _LGFX_QRCODE_H_
 #define _LGFX_QRCODE_H_
 
-// C23 (__STDC_VERSION__ >= 202311L) makes bool/true/false native keywords;
-// only define this pre-C99 shim when compiling as C and pre-C23.
+// Fix for gcc (Alpine 15.2.0) see https://github.com/lovyan03/LovyanGFX/issues/808#issuecomment-3724949845
 #if !defined(__cplusplus) && (!defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L)
 typedef unsigned char bool;
 static const bool false = 0;

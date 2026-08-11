@@ -3,6 +3,7 @@
 
 #include "params_def.h"
 #include "screen_mode.h"
+#include "screen_target.h"
 
 // Bits of levelBarFlag: pending level-bar widget updates.
 static constexpr uint8_t LEVEL_BAR_OSC1 = 0x01;

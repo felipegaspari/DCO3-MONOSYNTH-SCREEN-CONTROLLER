@@ -15,7 +15,7 @@ Semantic map for **`RP2040_SCREEN_CONTROLLER_LVGL_LOVEYANGFX`** only.
 | Owns | Does not own |
 |------|----------------|
 | LVGL presentation of params, presets, cal UI | Voice engine / CV generation |
-| UART RX from Input — the only peer, which also relays the DCO gap (154) | Preset file storage (Input LittleFS) |
+| UART RX from Input — the only peer, which also relays the DCO gap (154) | Preset file storage (the DCO's LittleFS; Input only caches slot names) |
 | ScreenMode UI state machine | Panel scanning |
 
 Display-only: no touch/pointer input device is registered (the previous no-op touchpad stub was removed along with its LVGL indev).
@@ -41,13 +41,14 @@ Do not call LVGL from Core0 or UART parsers from Core1. Do not call any `lv_*` f
 | `Serial.h` / `Serial.ino` | `screenStateMutex` + lock wrappers, shared state, Serial1 slim LUT parser + handlers (LE, no finish) |
 | `displayParams.h` / `displayParams.ino` | Param→label/model router (`screenParamTable`, `applyNavParam`), draw helpers |
 | `serial_frame.h` / `serial_parser.h` / `serial_param_protocol.h` / `params_def.h` | Shared slim protocol (max payload 17) |
+| `screen_target.h` | `CalTopology` + derive helpers — the only place monosynth vs 4x2 UI differences may live |
 
 ---
 
 ## External deps (edit carefully)
 
 - **SquareLine `ui.h`** — regenerating overwrites widget names; keep draw helpers in sync.
-- **`LGFX_RP2040_FELA.hpp`** — panel pins; outside this folder.
+- **`LGFX_RP2040_FELA.hpp`** — panel pins; lives in this folder on purpose (a LovyanGFX update deletes `lgfx_user/` copies).
 - **`params_def.h`** — keep ParamIds aligned with the DCO and Input boards; header guard text may still say "mainboard". IDs **156** (`PARAM_MANUAL_CALIBRATION_STORE`) and **170–173** (preset save/load/dump, cal dump) exist here for numeric parity only — no local handling on this board.
 
 ---
@@ -66,4 +67,5 @@ Do not call LVGL from Core0 or UART parsers from Core1. Do not call any `lv_*` f
 
 - `fela_U8g2/`, `src/felanew_U8g2/` — unused (~70 MB)
 - `tft_setup.h` — TFT_eSPI leftover, not included by the live sketch
+- `tusb_config.h.legacy` — old TinyUSB MIDI-only config; `.legacy` suffix keeps it from shadowing Pico SDK USB Serial
 - Removed entirely (no longer present): `globals.h`, `timers_millis.*`, `auxiliary.*`, `ui.ino`, `parameters.ino`, `presetNameString`/`presetNameBytesOLD` — their functionality either had no live callers or was folded into the `screenParamTable` router.
