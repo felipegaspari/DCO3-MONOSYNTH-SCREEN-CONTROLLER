@@ -55,6 +55,7 @@ Details: [`docs/UI_AND_SERIAL.md`](docs/UI_AND_SERIAL.md).
 3. Board: RP2040 (Earle Philhower core or compatible).
 4. Tools -> USB Stack must be **Pico SDK**, not *No USB*; the sketch `#error`s otherwise.
 5. Do not rely on `fela_U8g2/`, `tft_setup.h`, or `tusb_config.h.legacy` for the live build.
+6. `DCO-PROTOCOL` is `_build_libs/DCO-PROTOCOL` → `../../../DCO-PROTOCOL`. Sketch-root shims (`params_def.h`, `serial_*.h`, etc.) forward into it so Arduino IDE finds those headers; parent `SCREEN-CONTROLLER/libraries/DCO-PROTOCOL` remains for tooling that scans that tree.
 
 ### Flags (project)
 
