@@ -353,6 +353,21 @@ void setDisplayParam() {
     case ParamId::PARAM_VCF_KEYTRACK:
       paramName = " VCF Keytrack";
       break;
+    // 191-194: the filter pots are analog, so these ids exist only so a filter
+    // change the panel did not make (dco_control, MIDI CC, preset recall) still
+    // shows up here. Input sends them instead of relaying the 'd' block.
+    case ParamId::PARAM_UI_CUTOFF:
+      paramName = " Cutoff";
+      break;
+    case ParamId::PARAM_UI_RESONANCE:
+      paramName = " Resonance";
+      break;
+    case ParamId::PARAM_UI_ADSR2_TO_VCF:
+      paramName = " ADSR2 -> VCF";
+      break;
+    case ParamId::PARAM_UI_LFO2_TO_VCF:
+      paramName = " LFO2 -> VCF";
+      break;
     case ParamId::PARAM_VELOCITY_TO_VCF:
       paramName = " Velocity -> VCF";
       break;

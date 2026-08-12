@@ -44,6 +44,7 @@ static const uint8_t SCREEN_SERIAL1_LEN_PRESET_SCROLL    = 17;  // [preset#, 16 
 static const uint8_t SCREEN_SERIAL_LEN_SIGNAL            = 1;   // [signal]
 static const uint8_t SCREEN_SERIAL_LEN_CHAR_SELECT       = 1;   // [char index]
 static const uint8_t SCREEN_SERIAL_LEN_ADSR_BLOCK        = 8;   // 4×u16 LE
+static const uint8_t SCREEN_SERIAL_LEN_FILTER_BLOCK      = 8;   // 4×u16 LE, consumed only
 static const uint8_t SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV = 2;   // 'y': [paramId, value]
 
 // ---------------------------
@@ -226,9 +227,18 @@ static void SCREEN_HOT(screenSerial1_handle_char_select)(char, const uint8_t* pa
   screen_state_unlock();
 }
 
+// 'd' : filter block. Nothing is displayed from it — cutoff and resonance reach
+// this board as the 191-194 UI 'p' ids — but it is registered so the eight
+// payload bytes are consumed as a payload. An unregistered command byte is
+// dropped and its payload is then scanned as commands, and a cutoff low byte of
+// 'a' or 'p' would start a bogus frame.
+static void SCREEN_HOT(screenSerial1_handle_filter_block)(char, const uint8_t*, uint8_t) {
+}
+
 static const SerialCommandDef screenSerial1Commands[] = {
   { 'a', SCREEN_SERIAL_LEN_ADSR_BLOCK,        screenSerial1_handle_adsr1          },
   { 'b', SCREEN_SERIAL_LEN_ADSR_BLOCK,        screenSerial1_handle_adsr2          },
+  { 'd', SCREEN_SERIAL_LEN_FILTER_BLOCK,      screenSerial1_handle_filter_block   },
   { 'p', SCREEN_SERIAL_LEN_PARAM_16,          screenSerial1_handle_param16        },
   { 'w', SCREEN_SERIAL_LEN_PARAM_8,           screenSerial1_handle_param8         },
   { 'x', SCREEN_SERIAL_LEN_PARAM_32,          screenSerial1_handle_param32        },

@@ -54,7 +54,8 @@ Only peer link (RX GP13, TX GP12, 2.5 Mbaud). The Screen never transmits on it: 
 
 | Cmd | Role |
 |-----|------|
-| `'a'` / `'b'` | ADSR1/2 raw blocks **LE** → bar model + flags |
+| `'a'` / `'b'` | ADSR1/2 raw blocks **LE** → bar model + flags. Input sends them for its own faders and for a mirrored DCO edit, inverted back to fader units on its side |
+| `'d'` | Filter block — registered but deliberately empty, so its payload can never be scanned as command bytes. The values themselves arrive as `'p'` ids 191-194 |
 | `'p'` / `'w'` / `'x'` | ParamId → `setDisplayParam` / levels / cal. `'p'` = 3 B LE; `'w'` = 2 B; `'x'` = 5 B LE. Gap (`PARAM_GAP_FROM_DCO` 154) arrives as slim `'x'` relayed by Input |
 | `'y'` | Nav `[id][u8]` → `applyNavParam` for cal stage/offset (same router table as `'p'/'w'/'x'`); ids 150..155 also raise `paramChangeFlag` |
 | `'q'` | Preset scroll: number + **16** chars (17-byte payload, no finish) |

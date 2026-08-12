@@ -214,6 +214,7 @@ Command / length inventory for the link is tabulated below (built from `screenSe
 | `SCREEN_SERIAL_LEN_SIGNAL` | 1 | `[signal]` |
 | `SCREEN_SERIAL_LEN_CHAR_SELECT` | 1 | `[char index]` |
 | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | 8 | ADSR A/D/S/R u16 LE |
+| `SCREEN_SERIAL_LEN_FILTER_BLOCK` | 8 | `'d'`: cutoff/reso/env/lfo u16 LE, consumed only |
 | `SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV` | 2 | `'y'`: `[paramId, value]` |
 
 #### Serial1 command table (`screenSerial1Commands[]` — Input → Screen)
@@ -222,6 +223,7 @@ Command / length inventory for the link is tabulated below (built from `screenSe
 |-----|---------|--------------|--------|
 | `'a'` | `screenSerial1_handle_adsr1` | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | ADSR1 LE → `updateADSR1Flag` |
 | `'b'` | `screenSerial1_handle_adsr2` | `SCREEN_SERIAL_LEN_ADSR_BLOCK` | ADSR2 LE → `updateADSR2Flag` |
+| `'d'` | `screenSerial1_handle_filter_block` | `SCREEN_SERIAL_LEN_FILTER_BLOCK` | Nothing — registered so the 8 payload bytes are consumed as a payload instead of being scanned as command bytes. Cutoff and resonance arrive as the UI ids 191-194 on `'p'` |
 | `'p'` | `screenSerial1_handle_param16` | `SCREEN_SERIAL_LEN_PARAM_16` | → `screenSerial1_apply_param_from_frame` |
 | `'w'` | `screenSerial1_handle_param8` | `SCREEN_SERIAL_LEN_PARAM_8` | Ignore ids 152/153; else reinterpret u8 → apply |
 | `'x'` | `screenSerial1_handle_param32` | `SCREEN_SERIAL_LEN_PARAM_32` | → apply helper |
@@ -398,6 +400,10 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 153 | `PARAM_MANUAL_CALIBRATION_OFFSET` | `OFFSET` | — | yes |
 | 154 | `PARAM_GAP_FROM_DCO` | `GAP` | — | yes |
 | 190 | `PARAM_UI_MENU_POSITION` | *(no toast label; empty case)* | — | — |
+| 191 | `PARAM_UI_CUTOFF` | `Cutoff` | — | — |
+| 192 | `PARAM_UI_RESONANCE` | `Resonance` | — | — |
+| 193 | `PARAM_UI_ADSR2_TO_VCF` | `ADSR2 -> VCF` | — | — |
+| 194 | `PARAM_UI_LFO2_TO_VCF` | `LFO2 -> VCF` | — | — |
 | 199 | `PARAM_UI_CALIBRATION_DISMISS` | *(no toast; side-effect only)* | — | yes |
 | 200 | `PARAM_UI_CALIBRATION_MENU_MODE` | *(no toast; side-effect only)* | — | yes |
 | 210 | `PARAM_PW_VALUE` | `PW` | — | — |
