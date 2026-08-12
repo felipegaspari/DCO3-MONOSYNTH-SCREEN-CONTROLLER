@@ -367,6 +367,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 24 | `PARAM_SUB_LEVEL` | `SUB Level` | — | yes |
 | 25 | `PARAM_CALIBRATION_VALUE` | `CALIBRATION VAL` | — | — |
 | 26 | `PARAM_VOICE_MODE` | MONO / POLY / UNISON | — | — |
+| 102 | `PARAM_VOICE_ALLOC_MODE` | ROUND ROBIN / OLDEST / QUIETEST / QUIETEST KEEP LOW / QUIETEST KEEP HIGH / NO STEAL, each with its mono note priority | — | — |
 | 27 | `PARAM_UNISON_DETUNE` | `Analog Detune` | — | — |
 | 28 | `PARAM_ANALOG_DRIFT_AMOUNT` | `Analog Drift` | — | — |
 | 29 | `PARAM_ANALOG_DRIFT_SPEED` | `Analog Drift Speed` | — | — |

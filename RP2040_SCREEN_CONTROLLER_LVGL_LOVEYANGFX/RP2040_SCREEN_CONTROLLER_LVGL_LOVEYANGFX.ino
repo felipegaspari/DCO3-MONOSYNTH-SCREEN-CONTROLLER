@@ -62,25 +62,45 @@ static uint32_t SCREEN_HOT(my_tick_get_cb)(void) {
 
 uint32_t paramChangeLastMillis = 0;
 
-// Core1-owned screen mode. Core0 is the only writer of serialSignal; each 's'
-// signal (or apply_param_* mode change) raises signalFlag and Core1 latches
-// the new mode here in handleScreenModeChange().
+// Core1-owned screen mode. Each 's' signal (or apply_param_* mode change) raises
+// signalFlag on Core0 and Core1 latches the new mode here in
+// handleScreenModeChange(). The silence watchdog below is the one place Core1
+// writes serialSignal back, and only when no fresher signal is pending.
 static ScreenMode currentMode = ScreenMode::PresetScroll;
+
+// Silence is opened and closed by a pair of 's' frames around a preset recall
+// (DCO preset_store_load). Losing the closing one would leave the UI ignoring
+// every param frame from then on, so time it out: longer than a recall's mirror
+// burst, short enough that a dropped marker reads as a hiccup and not a hang.
+static const uint32_t silentModeTimeoutMillis = 2000;
+static uint32_t silentModeEnteredMillis = 0;
 
 #if defined(NO_USB) || defined(DISABLE_USB_SERIAL)
 #error This sketch needs USB Serial (Serial.begin). Arduino IDE: Tools -> USB Stack -> Pico SDK (not No USB).
 #endif
 
 /////////////////////////////////////////////////////////// setup ///////////////////////////////////////////////////
-// Core0 boot: USB debug Serial + Serial1 (Input, the only peer link).
+// Core0 boot: USB debug Serial + peer UART(s). See Serial.h pin map.
+// DCO3: Serial1 GP13 ← Input.
+// DCO4: Serial2 GP21 ← Mainboard PA9, and Serial1 GP13 ← Input.
 void setup() {
-  Serial.begin(1000000);
+ 
+  Serial.begin(2000000);
 
-  Serial1.setRX(13);
-  Serial1.setTX(12);
-  Serial1.setPollingMode(false);
-  Serial1.setFIFOSize(512);
-  Serial1.begin(2500000);
+#if SCREEN_HAS_MB_PEER
+  SCREEN_MB_PORT.setRX(SCREEN_MB_RX_PIN);
+  SCREEN_MB_PORT.setTX(SCREEN_MB_TX_PIN);
+  SCREEN_MB_PORT.setPollingMode(false);
+  SCREEN_MB_PORT.setFIFOSize(512);
+  SCREEN_MB_PORT.begin(2500000);
+#endif
+#if SCREEN_HAS_INPUT_PEER
+  SCREEN_INPUT_PORT.setRX(SCREEN_INPUT_RX_PIN);
+  SCREEN_INPUT_PORT.setTX(SCREEN_INPUT_TX_PIN);
+  SCREEN_INPUT_PORT.setPollingMode(false);
+  SCREEN_INPUT_PORT.setFIFOSize(512);
+  SCREEN_INPUT_PORT.begin(2500000);
+#endif
   init_screen_serial();
 
   // USBDevice.setManufacturerDescriptor("FELA         ");   /// Why doesnt it work?
@@ -120,7 +140,7 @@ void setup1() {
 }
 
 /////////////////////////////////////////////////////////// loop ///////////////////////////////////////////////////
-// Core0 hot path: drain the Input (Serial1) parser.
+// Core0 hot path: drain peer UART parser(s).
 void loop(void) {
   serial_read_n();
 }
@@ -201,7 +221,8 @@ static void SCREEN_HOT(handleScreenModeChange)() {
       break;
 
     case ScreenMode::Silent:
-      // SCREEN SILENCE - no immediate action
+      // SCREEN SILENCE - no immediate action, only the watchdog below
+      silentModeEnteredMillis = millis();
       break;
 
     case ScreenMode::CalibrationMenu:
@@ -217,6 +238,27 @@ static void SCREEN_HOT(handleScreenModeChange)() {
 
     default:
       break;
+  }
+}
+
+// Watchdog for a lost end-of-silence marker (see silentModeTimeoutMillis). Runs
+// right after handleScreenModeChange, so signalFlag has just been drained: if it
+// is set again a newer signal beat us to it and wins.
+static void SCREEN_HOT(expireSilentMode)() {
+  if (currentMode != ScreenMode::Silent) return;
+  if (millis() - silentModeEnteredMillis < silentModeTimeoutMillis) return;
+
+  bool expired = false;
+  screen_state_lock();
+  if (!signalFlag && serialSignal == screen_mode_raw(ScreenMode::Silent)) {
+    serialSignal = screen_mode_raw(ScreenMode::PresetScroll);
+    expired      = true;
+  }
+  screen_state_unlock();
+
+  if (expired) {
+    currentMode = ScreenMode::PresetScroll;
+    draw_preset_scroll_1(currentMode);
   }
 }
 
@@ -372,6 +414,7 @@ static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode) {
 // Core1 hot path: apply serial-driven UI updates, then LVGL timer handler.
 void SCREEN_HOT(loop1)(void) {
   handleScreenModeChange();
+  expireSilentMode();
   updateBottomMessageAndPresetUI(currentMode);
   updateLevelBars(currentMode);
   updateADSRBars();

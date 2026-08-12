@@ -32,9 +32,10 @@ mutex_t screenStateMutex __attribute__((section(".mutex_array")));
 void applyNavParam(uint8_t id, int32_t value);
 
 // ---------------------------------------------------------------------------
-// Screen controller serial parser (Serial1: input -> screen).
-// Input is the only peer: it sends UI frames and relays the DCO gap 'x' (154).
-// All handlers run on Core0; they publish shared state under screen_state_lock.
+// Screen controller serial parsers.
+// DCO3: Input → Serial1 GP13.
+// DCO4: Mainboard PA9 → Serial2 GP21, and Input → Serial1 GP13 (both drained).
+// Same UI frame set on every peer; handlers run on Core0 under screen_state_lock.
 // ---------------------------------------------------------------------------
 
 static const uint8_t SCREEN_SERIAL_LEN_PARAM_16          = 3;   // [id, i16 LE]
@@ -48,10 +49,10 @@ static const uint8_t SCREEN_SERIAL_LEN_FILTER_BLOCK      = 8;   // 4×u16 LE, co
 static const uint8_t SCREEN_SERIAL_LEN_PARAM_BYTE_TO_NAV = 2;   // 'y': [paramId, value]
 
 // ---------------------------
-// Serial1 (input -> screen)
+// Peer UART handlers
 // ---------------------------
 
-// 'a' : ADSR1 block (attack/decay/sustain/release) from input controller.
+// 'a' : ADSR1 block (attack/decay/sustain/release).
 static void SCREEN_HOT(screenSerial1_handle_adsr1)(char, const uint8_t* payload, uint8_t len) {
   if (len != SCREEN_SERIAL_LEN_ADSR_BLOCK) {
     return;
@@ -248,18 +249,28 @@ static const SerialCommandDef screenSerial1Commands[] = {
   { 'c', SCREEN_SERIAL_LEN_CHAR_SELECT,       screenSerial1_handle_char_select    },
 };
 
-static SerialCommandTable screenSerial1Lut;
-static SerialParserContext screenSerial1Parser = {};
+static SerialCommandTable screenPeerLut;
+#if SCREEN_HAS_INPUT_PEER
+static SerialParserContext screenInputParser = {};
+#endif
+#if SCREEN_HAS_MB_PEER
+static SerialParserContext screenMbParser = {};
+#endif
 
 void init_screen_serial() {
   serial_command_table_init(
-    screenSerial1Lut,
+    screenPeerLut,
     screenSerial1Commands,
     sizeof(screenSerial1Commands) / sizeof(screenSerial1Commands[0])
   );
 }
 
-// Core0: non-blocking Input Serial1 parser pump.
+// Core0: non-blocking peer UART parser pump(s).
 void SCREEN_HOT(serial_read_n)() {
-  serial_parser_drain(screenSerial1Parser, screenSerial1Lut, Serial1, SERIAL_DRAIN_BYTE_BUDGET);
+#if SCREEN_HAS_MB_PEER
+  serial_parser_drain(screenMbParser, screenPeerLut, SCREEN_MB_PORT, SERIAL_DRAIN_BYTE_BUDGET);
+#endif
+#if SCREEN_HAS_INPUT_PEER
+  serial_parser_drain(screenInputParser, screenPeerLut, SCREEN_INPUT_PORT, SERIAL_DRAIN_BYTE_BUDGET);
+#endif
 }

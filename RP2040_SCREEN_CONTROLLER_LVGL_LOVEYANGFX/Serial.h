@@ -8,12 +8,35 @@
 
 #include <pico/mutex.h>
 
+#include "project_config.h"
 #include "sram_hot.h"
 #include "screen_mode.h"
 #include "serial_input_protocol.h"
 #include "serial_frame.h"
 #include "serial_parser.h"
 #include "serial_param_protocol.h"
+
+// Peer UARTs — do not infer the peer from the port number.
+//
+// DCO3: Input only on Serial1 GP13.
+// DCO4 board traces: Mainboard PA9 TX → GP21, PA10 RX → GP20 (Serial2 / UART1).
+//           Input still drives GP13 on Serial1; drain both.
+#if PROJECT_INSTRUMENT == 4
+#define SCREEN_HAS_MB_PEER    1
+#define SCREEN_HAS_INPUT_PEER 1
+#define SCREEN_MB_PORT        Serial2
+#define SCREEN_MB_RX_PIN      21
+#define SCREEN_MB_TX_PIN      20
+#define SCREEN_INPUT_PORT     Serial1
+#define SCREEN_INPUT_RX_PIN   13
+#define SCREEN_INPUT_TX_PIN   12
+#else
+#define SCREEN_HAS_MB_PEER    0
+#define SCREEN_HAS_INPUT_PEER 1
+#define SCREEN_INPUT_PORT     Serial1
+#define SCREEN_INPUT_RX_PIN   13
+#define SCREEN_INPUT_TX_PIN   12
+#endif
 
 void serial_read_n();
 void init_screen_serial();

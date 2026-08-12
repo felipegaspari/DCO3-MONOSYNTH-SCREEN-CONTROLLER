@@ -404,6 +404,32 @@ void setDisplayParam() {
           break;
       }
       break;
+    // Poly steal policy / mono note priority; the two names per value are
+    // "what poly does / what mono does".
+    case ParamId::PARAM_VOICE_ALLOC_MODE:
+      switch (paramValue) {
+        case 0:
+          paramName = " ROUND ROBIN / LAST";
+          break;
+        case 1:
+          paramName = " OLDEST / FIRST";
+          break;
+        case 2:
+          paramName = " QUIETEST / LAST";
+          break;
+        case 3:
+          paramName = " QUIETEST KEEP LOW / LOW";
+          break;
+        case 4:
+          paramName = " QUIETEST KEEP HIGH / HIGH";
+          break;
+        case 5:
+          paramName = " NO STEAL / FIRST";
+          break;
+        default:
+          break;
+      }
+      break;
     case ParamId::PARAM_UNISON_DETUNE:
       paramName = " Analog Detune";
       break;
