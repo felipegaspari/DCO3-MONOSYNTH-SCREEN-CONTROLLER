@@ -84,7 +84,6 @@ static uint32_t silentModeEnteredMillis = 0;
 // DCO3: Serial1 GP13 ← Input.
 // DCO4: Serial2 GP21 ← Mainboard PA9, and Serial1 GP13 ← Input.
 void setup() {
- 
   Serial.begin(2000000);
 
 #if SCREEN_HAS_MB_PEER

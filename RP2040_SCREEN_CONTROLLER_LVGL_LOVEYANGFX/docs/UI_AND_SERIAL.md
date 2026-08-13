@@ -106,9 +106,10 @@ This sketch is meant to be the single screen firmware for both synths, so the pl
 
 | | `Monosynth3Osc` (DCO3) | `Voices4x2` (DCO4-REBORN) |
 |---|---|---|
-| Stage range | 0–5 (3 osc × 2 waveform stages) | 0–7 (8 osc × 1 stage) |
-| `ui_oscillatorN` | `stage / 2` | `stage` |
-| `ui_waveform` | SAW / TRI / SQR | DCO chip A / B |
+| Stage range | 0–8 (3 osc × 3 substages) | 0–27 (packed A4+B3 per voice) |
+| `ui_oscillatorN` | `"1"` / `"2"` / `"3"` (1-based OSC1–3) | `"0A"` / `"0B"` / `"1A"` … (`voice = osc/2`, A/B = `osc%2`) |
+| `ui_waveform` | SAW / PULSE / 440 | SAW / TRI / PULSE / 440 |
+| Stage toast (`PARAM_MANUAL_CALIBRATION_STAGE`) | `" OSC 1 SAW"` (value = offset or 440 trim) | `" OSC 0A PULSE"` (value = offset, PW center, or 440 trim) |
 | `PARAM_ADSR3_TO_OSC_SELECT` | OSC1 / OSC2 / BOTH / OSC3 / ALL | A / B / A+B |
 
 Every caller reads `screen_cal_topology()` and passes the result to a derive helper. **Do not add a per-project `#if` anywhere else** — add a helper here instead, otherwise the two projects cannot share one commit.

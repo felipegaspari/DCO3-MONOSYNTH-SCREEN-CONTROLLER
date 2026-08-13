@@ -1,19 +1,19 @@
 #ifndef __SCREEN_TARGET_H__
 #define __SCREEN_TARGET_H__
 
+#include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include "params_def.h"
 
 // Which synth this screen is attached to, as far as the calibration UI cares.
 //
-// The two boards lay the manual-calibration screen out differently: the
-// monosynth walks 3 oscillators through 2 waveform stages each, while the 4x2
-// voice board walks 8 oscillators through 1 stage each and repurposes the
-// WAVEFORM label to show which DCO chip is being trimmed. Everything the UI
-// needs to know about that difference is derived from this enum, so no source
-// file outside this header carries a per-project #if.
+// DCO3: 3 osc × saw/pulse/440 (stage 0..8). DCO4: packed A4+B3 per voice
+// (saw/tri/pulse-PW/440 and saw/pulse/440, stage 0..27). ADSR3 labels also
+// differ. WAVEFORM comes from cal_stage_kind_n.
 enum class CalTopology : uint8_t {
-  Monosynth3Osc,  // 3 osc x 2 stages, stage 0..5, WAVEFORM = SAW/TRI/SQR
-  Voices4x2       // 8 osc x 1 stage,  stage 0..7, WAVEFORM = DCO chip A/B
+  Monosynth3Osc,  // 3 osc x 3 substages, stage 0..8
+  Voices4x2       // packed A4+B3, stage 0..27
 };
 
 // Pre-announcement fallback only, overridable with -DSCREEN_CAL_TOPOLOGY_DEFAULT=...
@@ -39,6 +39,22 @@ enum class CalTopology : uint8_t {
 #  endif
 #endif
 
+// MCU module GP23/24 (same DCO_MCU_BOARD as the DCO). Live TFT/UART pins do
+// not use 23/24. Pico/Pico 2: SMPS PS high. WeAct KEY returns to preset-scroll.
+static constexpr uint8_t MCU_PIN_UNASSIGNED = 0xFF;
+#if defined(DCO_MCU_BOARD) && DCO_MCU_BOARD == DCO_MCU_WEACT_RP2040
+static constexpr uint8_t SMPS_PS_PIN = MCU_PIN_UNASSIGNED;
+static constexpr uint8_t USER_KEY_PIN = 23;
+#elif defined(DCO_MCU_BOARD) && ((DCO_MCU_BOARD == DCO_MCU_PICO) || (DCO_MCU_BOARD == DCO_MCU_PICO2))
+static constexpr uint8_t SMPS_PS_PIN = 23;
+static constexpr uint8_t USER_KEY_PIN = MCU_PIN_UNASSIGNED;
+#elif defined(DCO_MCU_BOARD)
+#error "DCO_MCU_BOARD must be DCO_MCU_WEACT_RP2040, DCO_MCU_PICO, or DCO_MCU_PICO2"
+#else
+static constexpr uint8_t SMPS_PS_PIN = MCU_PIN_UNASSIGNED;
+static constexpr uint8_t USER_KEY_PIN = MCU_PIN_UNASSIGNED;
+#endif
+
 // Definition lives in displayParams.ino; guarded by screen_state_lock() like
 // every other cross-core field (Serial.h). Snapshot it under the lock before
 // calling screen_cal_topology() from Core1 code that isn't already holding
@@ -51,32 +67,51 @@ inline CalTopology screen_cal_topology() {
 }
 
 // Oscillator count is what the synth can report about itself; 3 is the only
-// count that implies the two-stages-per-oscillator monosynth layout.
+// count that implies the three-oscillator monosynth layout.
 constexpr CalTopology screen_topology_from_osc_count(uint8_t oscCount) {
   return (oscCount <= 3) ? CalTopology::Monosynth3Osc : CalTopology::Voices4x2;
 }
 
-// Highest stage index the Input can send.
-inline uint8_t screen_cal_stage_max(CalTopology topology) {
-  return (topology == CalTopology::Monosynth3Osc) ? 5 : 7;
+constexpr uint8_t screen_cal_nosc(CalTopology topology) {
+  return (topology == CalTopology::Monosynth3Osc) ? 3 : 8;
 }
 
-// Stage -> oscillator number shown in ui_oscillatorN.
+// Highest stage index the Input can send.
+inline uint8_t screen_cal_stage_max(CalTopology topology) {
+  return cal_stage_max_n(screen_cal_nosc(topology));
+}
+
+// Stage -> 0-based oscillator index (DCO4 0..7, DCO3 0..2).
 inline uint8_t screen_cal_stage_to_osc(CalTopology topology, uint8_t stage) {
-  return (topology == CalTopology::Monosynth3Osc) ? (uint8_t)(stage / 2) : stage;
+  return cal_stage_to_osc_n(stage, screen_cal_nosc(topology));
 }
 
 // Text for ui_waveform / ui_waveformShadow.
 inline const char* screen_cal_stage_label(CalTopology topology, uint8_t stage) {
+  switch (cal_stage_kind_n(stage, screen_cal_nosc(topology))) {
+    case CAL_KIND_TRI:      return "TRI";
+    case CAL_KIND_PULSE:    return "PULSE";
+    case CAL_KIND_PULSE_PW: return "PULSE";
+    case CAL_KIND_440:      return "440";
+    default:                return "SAW";
+  }
+}
+
+// DCO4 voice/chip ("0A" / "0B" / "1A" …); DCO3 1-based OSC1–3 ("1" / "2" / "3").
+inline void screen_cal_format_osc(CalTopology topology, uint8_t osc, char* buf, size_t n) {
+  if (n == 0) return;
   if (topology == CalTopology::Voices4x2) {
-    return ((stage & 1) == 0) ? "A" : "B";
+    snprintf(buf, n, "%u%c", (unsigned)(osc / 2u), (osc % 2u) ? 'B' : 'A');
+  } else {
+    snprintf(buf, n, "%u", (unsigned)(osc + 1u));
   }
-  // Monosynth: even stages are SAW; odd stages 1 and 5 are TRI (OSC1/OSC3),
-  // odd stage 3 is SQR (OSC2), matching the Input/DCO manual-cal conventions.
-  if ((stage % 2) == 0) {
-    return "SAW";
-  }
-  return (stage == 1 || stage == 5) ? "TRI" : "SQR";
+}
+
+// Stage toast: " OSC 0A PULSE" / DCO3 " OSC 1 SAW". Not the raw stage index.
+inline void screen_cal_format_toast(CalTopology topology, uint8_t stage, char* buf, size_t n) {
+  char oscBuf[4];
+  screen_cal_format_osc(topology, screen_cal_stage_to_osc(topology, stage), oscBuf, sizeof(oscBuf));
+  snprintf(buf, n, " OSC %s %s", oscBuf, screen_cal_stage_label(topology, stage));
 }
 
 // Toast text for PARAM_ADSR3_TO_OSC_SELECT. The same wire value means

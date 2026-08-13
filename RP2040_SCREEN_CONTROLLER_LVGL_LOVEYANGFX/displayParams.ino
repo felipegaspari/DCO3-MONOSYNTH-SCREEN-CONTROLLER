@@ -7,6 +7,8 @@ uint16_t paramHideTimeMillis = 3000;
 bool     paramChangeTimerFlag = false;
 
 volatile int8_t   offset = 0;
+volatile uint16_t ampComp440Display = 0;
+volatile uint16_t calPwCenterDisplay = 0;
 volatile uint8_t  manualCalibrationOSCN = 0;
 volatile uint8_t  manualCalibrationStage = 0;
 volatile int32_t  calibrationGap = 0;
@@ -106,6 +108,17 @@ static void apply_param_manual_calibration_offset(int32_t v) {
   offset = (int8_t)v;
 }
 
+static void apply_param_amp_comp_440(int32_t v) {
+  if (v < 0) v = 0;
+  ampComp440Display = (uint16_t)v;
+}
+
+static void apply_param_cal_pw_center(int32_t v) {
+  if (v < 0) v = 0;
+  if (v > (int32_t)CAL_PW_CENTER_MAX) v = (int32_t)CAL_PW_CENTER_MAX;
+  calPwCenterDisplay = (uint16_t)v;
+}
+
 static void apply_param_gap_from_dco(int32_t v) {
   calibrationGap = (int32_t)v;
 }
@@ -134,6 +147,8 @@ static const ScreenParamDescriptor screenParamTable[] = {
   { ParamId::PARAM_MANUAL_CALIBRATION_FLAG,        apply_param_manual_calibration_flag          },
   { ParamId::PARAM_MANUAL_CALIBRATION_STAGE,       apply_param_manual_calibration_stage         },
   { ParamId::PARAM_MANUAL_CALIBRATION_OFFSET,      apply_param_manual_calibration_offset        },
+  { ParamId::PARAM_AMP_COMP_440,                   apply_param_amp_comp_440                     },
+  { ParamId::PARAM_CAL_PW_CENTER,                  apply_param_cal_pw_center                    },
   { ParamId::PARAM_GAP_FROM_DCO,                   apply_param_gap_from_dco                     },
   { ParamId::PARAM_UI_CALIBRATION_DISMISS,         apply_param_ui_calibration_dismiss           },
   { ParamId::PARAM_UI_CALIBRATION_MENU_MODE,       apply_param_ui_calibration_menu_mode         },
@@ -207,28 +222,40 @@ void draw_preset_scroll_1(ScreenMode mode) {
 // Core1 only.
 void drawManualCalibration() {
   int8_t      offsetNow;
+  uint16_t    amp440;
+  uint16_t    pwCenter;
   uint8_t     oscN;
   uint8_t     stage;
   int32_t     gap;
   CalTopology topology;
   screen_state_lock();
   offsetNow = offset;
+  amp440    = ampComp440Display;
+  pwCenter  = calPwCenterDisplay;
   oscN      = manualCalibrationOSCN;
   stage     = manualCalibrationStage;
   gap       = calibrationGap;
   topology  = screenCalTopology;
   screen_state_unlock();
 
-  char str[8];       // int8 worst case: "-128" + '\0'
+  char str[8];       // int8 worst case: "-128" + '\0'; amp 440 fits too
   char strLong[12];  // int32 worst case: "-2147483648" + '\0'
 
-  itoa(offsetNow, str, 10);
+  const uint8_t nOsc = screen_cal_nosc(topology);
+  if (cal_stage_is_440_n(stage, nOsc)) {
+    itoa((int)amp440, str, 10);
+  } else if (cal_stage_is_pw_edit_n(stage, nOsc)) {
+    itoa((int)pwCenter, str, 10);
+  } else {
+    itoa(offsetNow, str, 10);
+  }
   lv_label_set_text(ui_calibrationOffset, str);
   lv_label_set_text(ui_calibrationOffsetShadow, str);
 
-  itoa(oscN, str, 10);
-  lv_label_set_text(ui_oscillatorN, str);
-  lv_label_set_text(ui_oscillatorNShadow, str);
+  char oscLabel[4];
+  screen_cal_format_osc(topology, oscN, oscLabel, sizeof(oscLabel));
+  lv_label_set_text(ui_oscillatorN, oscLabel);
+  lv_label_set_text(ui_oscillatorNShadow, oscLabel);
 
   ltoa(gap, strLong, 10);
   lv_label_set_text(ui_calibrationGap, strLong);
@@ -649,11 +676,31 @@ void setDisplayParam() {
     case ParamId::PARAM_MANUAL_CALIBRATION_FLAG:
       paramName = " MANUAL CALIBRATION";
       break;
-    case ParamId::PARAM_MANUAL_CALIBRATION_STAGE:  // manual calibration stage
-      paramName = "OSCILLATOR N";
+    case ParamId::PARAM_MANUAL_CALIBRATION_STAGE: {  // osc + wave, not raw stage
+      static char calStageToast[20];
+      const uint8_t stageNow = (uint8_t)paramValue;
+      screen_cal_format_toast(screen_cal_topology(), stageNow, calStageToast, sizeof(calStageToast));
+      paramName = calStageToast;
+      {
+        const uint8_t nOsc = screen_cal_nosc(screen_cal_topology());
+        if (cal_stage_is_440_n(stageNow, nOsc)) {
+          paramValue = (int32_t)ampComp440Display;
+        } else if (cal_stage_is_pw_edit_n(stageNow, nOsc)) {
+          paramValue = (int32_t)calPwCenterDisplay;
+        } else {
+          paramValue = (int32_t)offset;
+        }
+      }
       break;
+    }
     case ParamId::PARAM_MANUAL_CALIBRATION_OFFSET:  // manual calibration offset
       paramName = " OFFSET";
+      break;
+    case ParamId::PARAM_AMP_COMP_440:
+      paramName = " AMP";
+      break;
+    case ParamId::PARAM_CAL_PW_CENTER:
+      paramName = " PW";
       break;
     case ParamId::PARAM_GAP_FROM_DCO:  // manual calibration GAP
       paramName = " GAP";

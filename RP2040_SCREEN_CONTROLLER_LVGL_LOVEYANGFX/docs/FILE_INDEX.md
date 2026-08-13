@@ -142,7 +142,7 @@ SRAM pinning switch. Defines `SCREEN_SRAM_HOT` (default **1**) and `SCREEN_HOT(f
 
 ### `screen_target.h`
 
-Per-synth UI differences, so one source tree serves both the DCO3 monosynth and the DCO4 4x2 voice board. Defines `enum class CalTopology { Monosynth3Osc, Voices4x2 }`, `extern volatile CalTopology screenCalTopology` (definition in `displayParams.ino`, guarded by `screen_state_lock()`), the pre-announcement fallback `SCREEN_CAL_TOPOLOGY_DEFAULT` (derived from `PROJECT_INSTRUMENT` in the superproject's symlinked `project_config.h`, overridable with `-D`), and the single accessor `screen_cal_topology()` — reads `screenCalTopology` — that every caller goes through. Derive helpers: `screen_topology_from_osc_count()`, `screen_cal_stage_max()` (5 or 7), `screen_cal_stage_to_osc()` (`stage/2` or `stage`), `screen_cal_stage_label()` (SAW/TRI/SQR or DCO chip A/B), `screen_adsr3_osc_select_label()`. Included by `displayParams.h`. `screenCalTopology` is set live from `PARAM_UI_VOICE_TOPOLOGY` (157) in `screenSerial1_handle_param_nav_byte` (`Serial.ino`); see [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md) § Voice topology.
+Per-synth UI differences, so one source tree serves both the DCO3 monosynth and the DCO4 4x2 voice board. Defines `enum class CalTopology { Monosynth3Osc, Voices4x2 }`, `extern volatile CalTopology screenCalTopology` (definition in `displayParams.ino`, guarded by `screen_state_lock()`), the pre-announcement fallback `SCREEN_CAL_TOPOLOGY_DEFAULT` (derived from `PROJECT_INSTRUMENT` in the superproject's symlinked `project_config.h`, overridable with `-D`), and the single accessor `screen_cal_topology()` — reads `screenCalTopology` — that every caller goes through. Derive helpers: `screen_topology_from_osc_count()`, `screen_cal_nosc()` (3 or 8), `screen_cal_stage_max()` (8 or 27), `screen_cal_stage_to_osc()` / `screen_cal_stage_label()` via `cal_stage_*_n` (SAW / TRI / PULSE / 440), `screen_adsr3_osc_select_label()`. Also `SMPS_PS_PIN` / `USER_KEY_PIN` from `DCO_MCU_BOARD` (pin maps only; not driven). Included by `displayParams.h`. `screenCalTopology` is set live from `PARAM_UI_VOICE_TOPOLOGY` (157) in `screenSerial1_handle_param_nav_byte` (`Serial.ino`); see [`UI_AND_SERIAL.md`](UI_AND_SERIAL.md) § Voice topology.
 
 ### `LGFX_RP2040_FELA.hpp`
 
@@ -397,7 +397,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 129 | `PARAM_POTS_CONTROL_MANUAL` | `MANUAL POTS` | — | — |
 | 150 | `PARAM_CALIBRATION_FLAG` | `AUTO CALIBRATION` | — | yes |
 | 151 | `PARAM_MANUAL_CALIBRATION_FLAG` | `MANUAL CALIBRATION` | — | yes |
-| 152 | `PARAM_MANUAL_CALIBRATION_STAGE` | `OSCILLATOR N` | — | yes |
+| 152 | `PARAM_MANUAL_CALIBRATION_STAGE` | `OSC 0A PULSE` / `OSC 1 SAW` (topology) | offset or 440 trim | yes |
 | 153 | `PARAM_MANUAL_CALIBRATION_OFFSET` | `OFFSET` | — | yes |
 | 154 | `PARAM_GAP_FROM_DCO` | `GAP` | — | yes |
 | 190 | `PARAM_UI_MENU_POSITION` | *(no toast label; empty case)* | — | — |
