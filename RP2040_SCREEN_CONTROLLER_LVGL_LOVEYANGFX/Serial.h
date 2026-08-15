@@ -11,10 +11,16 @@
 #include "project_config.h"
 #include "sram_hot.h"
 #include "screen_mode.h"
-#include "serial_input_protocol.h"
-#include "serial_frame.h"
-#include "serial_parser.h"
-#include "serial_param_protocol.h"
+
+#define DCO_PROTOCOL_IMPLEMENT_DMA // Only define this in ONE .cpp/.ino file!
+
+#include "_build_libs/DCO-PROTOCOL/serial_param_protocol.h"
+#include "_build_libs/DCO-PROTOCOL/serial_input_protocol.h"
+#include "_build_libs/DCO-PROTOCOL/serial_frame.h"
+#include "_build_libs/DCO-PROTOCOL/serial_parser.h"
+
+// NEW: The shared DMA library replaces serial_dma.h!
+#include "_build_libs/DCO-PROTOCOL/serial_dma_tx.h"
 
 // Peer UARTs — do not infer the peer from the port number.
 //
