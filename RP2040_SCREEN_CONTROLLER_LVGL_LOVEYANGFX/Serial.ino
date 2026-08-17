@@ -33,6 +33,7 @@ void applyNavParam(uint8_t id, int32_t value);
 static void SCREEN_HOT(screenSerial1_handle_patch_osc_block)(char, const uint8_t*, uint8_t) {}
 static void SCREEN_HOT(screenSerial1_handle_patch_lfo_block)(char, const uint8_t*, uint8_t) {}
 static void SCREEN_HOT(screenSerial1_handle_patch_mod_block)(char, const uint8_t*, uint8_t) {}
+static void SCREEN_HOT(screenSerial1_handle_patch_mix_block)(char, const uint8_t*, uint8_t) {}
 
 // ---------------------------------------------------------------------------
 // Screen controller serial parsers.
@@ -152,8 +153,9 @@ static const SerialCommandDef screenSerial1Commands[] = {
   { CMD_BLOCK_OSC,     SERIAL_LEN_BLOCK_OSC,            screenSerial1_handle_patch_osc_block },
   { CMD_BLOCK_LFO,     SERIAL_LEN_BLOCK_LFO,            screenSerial1_handle_patch_lfo_block },
   { CMD_BLOCK_MOD,     SERIAL_LEN_BLOCK_MOD,            screenSerial1_handle_patch_mod_block },
-  
+  { CMD_BLOCK_MIX,     SERIAL_LEN_BLOCK_MIX,            screenSerial1_handle_patch_mix_block },  
 };
+
 
 static SerialCommandTable screenPeerLut;
 

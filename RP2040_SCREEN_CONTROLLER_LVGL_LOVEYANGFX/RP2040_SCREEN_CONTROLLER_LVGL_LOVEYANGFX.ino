@@ -75,7 +75,7 @@ static ScreenMode currentMode = ScreenMode::PresetScroll;
 // (DCO preset_store_load). Losing the closing one would leave the UI ignoring
 // every param frame from then on, so time it out: longer than a recall's mirror
 // burst, short enough that a dropped marker reads as a hiccup and not a hang.
-static const uint32_t silentModeTimeoutMillis = 100;
+static const uint32_t silentModeTimeoutMillis = 2000;
 static uint32_t silentModeEnteredMillis = 0;
 
 #if defined(NO_USB) || defined(DISABLE_USB_SERIAL)
@@ -211,10 +211,18 @@ static void SCREEN_HOT(handleScreenModeChange)() {
       lv_textarea_set_cursor_pos(ui_PresetNewName, 0);
       break;
 
-    case ScreenMode::SaveCompleted:
+case ScreenMode::SaveCompleted:
       // PRESET SAVED
       lv_obj_add_flag(ui_PresetNewName, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(ui_PresetSavePanel, LV_OBJ_FLAG_HIDDEN);
+
+      // --- Sizing & Vertical Space ---
+      lv_obj_set_width(ui_PresetSavedMesage, 200);   // Set horizontal width
+      lv_obj_set_height(ui_PresetSavedMesage, 100);   // Increase vertical height (adjust 50 to 60/70 as needed)
+      
+      // Optional: Adjust vertical alignment (X offset = 0, Y offset = -20 to shift up, +20 to shift down)
+      lv_obj_align(ui_PresetSavedMesage, LV_ALIGN_CENTER, -20, 0);
+
       lv_obj_remove_flag(ui_PresetSavedMesage, LV_OBJ_FLAG_HIDDEN);
       paramChangeTimerFlag  = true;
       paramChangeLastMillis = millis();
