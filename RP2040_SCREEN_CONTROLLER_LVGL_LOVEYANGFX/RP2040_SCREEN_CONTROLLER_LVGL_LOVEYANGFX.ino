@@ -8,18 +8,21 @@
 
 #define SCREEN_SRAM_HOT 1
 
-#include <lvgl.h>
 #define LGFX_USE_V1
 #define LV_COLOR_16_SWAP 0
 
-#include <LovyanGFX.hpp>
-#include "LGFX_RP2040_FELA.hpp"
+#include <Adafruit_TinyUSB.h>
 
-#include <ui.h>
+#include <LovyanGFX.hpp>
+#include <lvgl.h>
+
+#include "src/ui/ui.h"
+#include "LGFX_RP2040_FELA.hpp"
 
 #include "sram_hot.h"
 #include "Serial.h"
 #include "displayParams.h"
+
 
 static const uint16_t screenWidth = 480;
 static const uint16_t screenHeight = 320;
@@ -72,7 +75,7 @@ static ScreenMode currentMode = ScreenMode::PresetScroll;
 // (DCO preset_store_load). Losing the closing one would leave the UI ignoring
 // every param frame from then on, so time it out: longer than a recall's mirror
 // burst, short enough that a dropped marker reads as a hiccup and not a hang.
-static const uint32_t silentModeTimeoutMillis = 2000;
+static const uint32_t silentModeTimeoutMillis = 100;
 static uint32_t silentModeEnteredMillis = 0;
 
 #if defined(NO_USB) || defined(DISABLE_USB_SERIAL)
@@ -420,4 +423,5 @@ void SCREEN_HOT(loop1)(void) {
   updateCalibrationUI(currentMode);
 
   lv_timer_handler();
+  delay(2);  // try if it works
 }

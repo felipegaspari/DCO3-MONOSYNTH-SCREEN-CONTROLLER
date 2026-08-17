@@ -180,7 +180,6 @@ void draw_param_1() {
   lv_obj_remove_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Draw preset number/name widgets for the given screen mode. Core1 only.
 void draw_preset_scroll_1(ScreenMode mode) {
 
   char name[17];
