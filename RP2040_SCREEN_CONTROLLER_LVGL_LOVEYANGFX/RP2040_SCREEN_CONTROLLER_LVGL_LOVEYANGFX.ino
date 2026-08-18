@@ -252,6 +252,7 @@ case ScreenMode::Silent:
     case ScreenMode::CalibrationMenu:
       lv_obj_add_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
       lv_scr_load(ui_MANUALCALIBRATION);
+      lv_tabview_set_active(ui_calibrationTabs, calibrationMenuIndex, LV_ANIM_ON);
       break;
 
     case ScreenMode::ManualCalibration:

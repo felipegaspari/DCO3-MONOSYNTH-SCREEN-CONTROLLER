@@ -16,6 +16,7 @@ volatile int32_t  calibrationGap = 0;
 // Which synth this screen is attached to; set from PARAM_UI_VOICE_TOPOLOGY
 // (Serial.ino) until the Input's first announcement arrives.
 volatile CalTopology screenCalTopology = SCREEN_CAL_TOPOLOGY_DEFAULT;
+volatile uint8_t calibrationMenuIndex = 0;
 
 volatile uint8_t  OSC1Level = 0;
 volatile uint8_t  OSC2Level = 0;
@@ -137,6 +138,11 @@ static void apply_param_ui_calibration_menu_mode(int32_t) {
   signalFlag   = true;
 }
 
+static void apply_param_ui_menu_position(int32_t v) {
+  if (v < 0) v = 0;
+  calibrationMenuIndex = (uint8_t)v;
+}
+
 // Parameter descriptor table for the screen controller.
 static const ScreenParamDescriptor screenParamTable[] = {
   { ParamId::PARAM_OSC1_LEVEL,                     apply_param_osc1_level                       },
@@ -150,6 +156,7 @@ static const ScreenParamDescriptor screenParamTable[] = {
   { ParamId::PARAM_AMP_COMP_440,                   apply_param_amp_comp_440                     },
   { ParamId::PARAM_CAL_PW_CENTER,                  apply_param_cal_pw_center                    },
   { ParamId::PARAM_GAP_FROM_DCO,                   apply_param_gap_from_dco                     },
+  { ParamId::PARAM_UI_MENU_POSITION,               apply_param_ui_menu_position                 },
   { ParamId::PARAM_UI_CALIBRATION_DISMISS,         apply_param_ui_calibration_dismiss           },
   { ParamId::PARAM_UI_CALIBRATION_MENU_MODE,       apply_param_ui_calibration_menu_mode         },
 };
