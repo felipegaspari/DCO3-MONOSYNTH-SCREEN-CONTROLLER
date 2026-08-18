@@ -177,6 +177,7 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   snap.a2r = ADSR2Release;
 
   // Unconditionally copy calibration values so snap is always 100% valid
+  snap.calMenuIndex = calibrationMenuIndex;
   snap.calOffset = offset;
   snap.calAmp440 = ampComp440Display;
   snap.calPwCenter = calPwCenterDisplay;
@@ -246,6 +247,7 @@ static void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
     case ScreenMode::CalibrationMenu:
       lv_obj_add_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
       lv_scr_load(ui_MANUALCALIBRATION);
+      lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF); // <--- ADD THIS
       break;
 
     case ScreenMode::ManualCalibration:
@@ -334,12 +336,15 @@ static void SCREEN_HOT(updateADSRBars)(const Core1Snapshot &snap) {
   }
 }
 
+static uint8_t lastRenderedMenuIndex = 255;
+
 // Lock-Free Calibration UI Router
 static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot &snap) {
   // 1. Calibration Menu Tab Scrolling (Mode 7)
   if (mode == ScreenMode::CalibrationMenu) {
-    if (snap.hasParamChange && snap.paramNumber == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
-      lv_tabview_set_active(ui_calibrationTabs, snap.paramValue, LV_ANIM_OFF); // <--- FIXED: Must be OFF
+    if (snap.calMenuIndex != lastRenderedMenuIndex) {
+      lastRenderedMenuIndex = snap.calMenuIndex;
+      lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF);
     }
     return;
   }
@@ -363,7 +368,6 @@ static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot
       }
   }
 }
-
 // Core 1 Main Loop
 void SCREEN_HOT(loop1)(void) {
   Core1Snapshot snap;

@@ -33,6 +33,7 @@ struct Core1Snapshot {
   uint16_t    a1a, a1d, a1s, a1r;
   uint16_t    a2a, a2d, a2s, a2r;
 
+  uint8_t     calMenuIndex;
   int8_t      calOffset;
   uint16_t    calAmp440;
   uint16_t    calPwCenter;
@@ -46,6 +47,7 @@ extern uint16_t paramHideTimeMillis;
 extern bool     paramChangeTimerFlag;
 extern uint32_t paramChangeLastMillis;
 
+extern volatile uint8_t  calibrationMenuIndex;
 extern volatile int8_t   offset;
 extern volatile uint16_t ampComp440Display;
 extern volatile uint16_t calPwCenterDisplay;

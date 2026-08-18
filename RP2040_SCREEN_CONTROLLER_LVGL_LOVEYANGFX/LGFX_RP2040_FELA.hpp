@@ -19,7 +19,7 @@ class LGFX : public lgfx::LGFX_Device
       auto cfg = _bus_instance.config();
       cfg.spi_host   = 0;
       cfg.spi_mode   = 0;
-      cfg.freq_write = 80000000;
+      cfg.freq_write = 400000000;
       cfg.pin_sclk   = 2;
       cfg.pin_miso   = 0;
       cfg.pin_mosi   = 3;

@@ -61,8 +61,7 @@ static int32_t  lastCalGap = -999999;
 static uint8_t  lastO1 = 255, lastO2 = 255, lastSub = 255;
 static uint16_t lastA1 = 65535, lastD1 = 65535, lastS1 = 65535, lastR1 = 65535;
 static uint16_t lastA2 = 65535, lastD2 = 65535, lastS2 = 65535, lastR2 = 65535;
-
-static bool lastToastActive = false;
+static bool     lastToastActive = false;
 
 void mark_u8g2_dirty() {
   oledDirty = true;
@@ -91,7 +90,8 @@ void init_u8g2() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-static inline void draw_meter_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t val, uint8_t maxVal = 255) {
+// FIXED: maxVal changed from 255 to 127 to match 7-bit synth level range
+static inline void draw_meter_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t val, uint8_t maxVal = 127) {
   u8g2.drawFrame(x, y, w, h);
   if (val > 0 && maxVal > 0) {
     uint8_t fillW = (uint16_t)(val * (w - 2)) / maxVal;
@@ -101,10 +101,10 @@ static inline void draw_meter_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, ui
 }
 
 static void draw_dynamic_adsr(uint8_t x, uint8_t y, uint8_t w, uint8_t h,
-                             uint16_t a, uint16_t d, uint16_t s, uint16_t r, const char* label) {
+                              uint16_t a, uint16_t d, uint16_t s, uint16_t r, const char* label) {
   u8g2.drawFrame(x, y, w, h);
-  u8g2.setFont(u8g2_font_4x6_tf);
-  u8g2.drawStr(x + 2, y + 6, label);
+  u8g2.setFont(psilent10);
+  u8g2.drawStr(x + 2, y + 8, label);
 
   uint8_t innerW = w - 16;
   uint8_t innerH = h - 4;
@@ -142,321 +142,314 @@ static void draw_dynamic_adsr(uint8_t x, uint8_t y, uint8_t w, uint8_t h,
   u8g2.drawLine(p1_x, p1_y, p2_x, p2_y);
   u8g2.drawLine(p2_x, p2_y, p3_x, p3_y);
   u8g2.drawLine(p3_x, p3_y, p4_x, p4_y);
-}
+                              }
 
-// ---------------------------------------------------------------------------
-// VIEW 1: Main Preset Dashboard
-// ---------------------------------------------------------------------------
-static void draw_view_preset(uint8_t pNum, const char* pName, uint8_t o1, uint8_t o2, uint8_t sub,
-                             uint16_t a1, uint16_t d1, uint16_t s1, uint16_t r1,
-                             uint16_t a2, uint16_t d2, uint16_t s2, uint16_t r2,
-                             bool toastActive, const char* pToastName, int32_t pToastVal, CalTopology topo) {
-  u8g2.setFont(u8g2_font_6x10_tf);
-  char header[24];
-  snprintf(header, sizeof(header), "P%02u: %s", pNum, pName);
-  u8g2.drawStr(2, 9, header);
-  u8g2.drawHLine(0, 11, 128);
+                              // ---------------------------------------------------------------------------
+                              // VIEW 1: Main Preset Dashboard
+                              // ---------------------------------------------------------------------------
+                              static void draw_view_preset(uint8_t pNum, const char* pName, uint8_t o1, uint8_t o2, uint8_t sub,
+                                                           uint16_t a1, uint16_t d1, uint16_t s1, uint16_t r1,
+                                                           uint16_t a2, uint16_t d2, uint16_t s2, uint16_t r2,
+                                                           bool toastActive, const char* pToastName, int32_t pToastVal, CalTopology topo) {
+                                u8g2.setFont(psilent12);
+                                char header[24];
+                                snprintf(header, sizeof(header), "P%02u: %s", pNum, pName);
+                                u8g2.drawStr(2, 10, header);
+                                u8g2.drawHLine(0, 12, 128);
 
-  u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(2, 21, "O1");
-  draw_meter_bar(14, 15, 38, 7, o1);
+                                u8g2.setFont(psilent10);
+                                u8g2.drawStr(2, 22, "O1");
+                                draw_meter_bar(14, 15, 38, 7, o1);
 
-  u8g2.drawStr(2, 31, "O2");
-  draw_meter_bar(14, 25, 38, 7, o2);
+                                u8g2.drawStr(2, 32, "O2");
+                                draw_meter_bar(14, 25, 38, 7, o2);
 
-  u8g2.drawStr(2, 41, "SB");
-  draw_meter_bar(14, 35, 38, 7, sub);
+                                u8g2.drawStr(2, 42, "SB");
+                                draw_meter_bar(14, 35, 38, 7, sub);
 
-  draw_dynamic_adsr(56, 14, 70, 15, a1, d1, s1, r1, "E1");
-  draw_dynamic_adsr(56, 31, 70, 15, a2, d2, s2, r2, "E2");
+                                draw_dynamic_adsr(56, 14, 70, 15, a1, d1, s1, r1, "E1");
+                                draw_dynamic_adsr(56, 31, 70, 15, a2, d2, s2, r2, "E2");
 
-  u8g2.drawHLine(0, 48, 128);
+                                u8g2.drawHLine(0, 48, 128);
 
-  if (toastActive && pToastName != nullptr) {
-    u8g2.setFont(u8g2_font_6x10_tf);
-    char toast[32];
-    snprintf(toast, sizeof(toast), "%s: %ld", pToastName, (long)pToastVal);
-    u8g2.drawStr(2, 60, toast);
-  } else {
-    u8g2.setFont(u8g2_font_5x7_tf);
-    const char* topStr = (topo == CalTopology::Voices4x2) ? "DCO4 [4x2 VOICES]" : "DCO3 [MONO 3-OSC]";
-    u8g2.drawStr(2, 59, topStr);
-  }
-}
+                                if (toastActive && pToastName != nullptr) {
+                                  u8g2.setFont(psilent12);
+                                  char toast[32];
+                                  snprintf(toast, sizeof(toast), "%s: %ld", pToastName, (long)pToastVal);
+                                  u8g2.drawStr(2, 60, toast);
+                                } else {
+                                  u8g2.setFont(psilent10);
+                                  const char* topStr = (topo == CalTopology::Voices4x2) ? "DCO4 [4x2 VOICES]" : "DCO3 [MONO 3-OSC]";
+                                  u8g2.drawStr(2, 60, topStr);
+                                }
+                                                           }
 
-// ---------------------------------------------------------------------------
-// VIEW 2: Calibration Menu (Matches ui_calibrationTabs on main display)
-// ---------------------------------------------------------------------------
-static void draw_view_cal_menu(uint8_t tabIndex, CalTopology topo) {
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.drawStr(2, 9, "CALIBRATION TABS");
-  
-  u8g2.setFont(u8g2_font_5x7_tf);
-  char posHeader[12];
-  snprintf(posHeader, sizeof(posHeader), "TAB %u", tabIndex + 1);
-  u8g2.drawStr(96, 9, posHeader);
-  u8g2.drawHLine(0, 11, 128);
+                                                           // ---------------------------------------------------------------------------
+                                                           // VIEW 2: Calibration Menu
+                                                           // ---------------------------------------------------------------------------
+                                                           static void draw_view_cal_menu(uint8_t tabIndex, CalTopology topo) {
+                                                             u8g2.setFont(psilent12);
+                                                             u8g2.drawStr(2, 10, "CALIBRATION TABS");
 
-  // Tab Definitions matching the synth tabs
-  static const char* calTabsDCO4[] = {
-    "1. OSC TUNING (4x2)",
-    "2. 440Hz AMP COMP",
-    "3. PW CENTER CAL",
-    "4. AUTO CALIBRATE",
-    "5. RESTORE DEFAULTS"
-  };
-  static const char* calTabsDCO3[] = {
-    "1. OSC 1-3 TUNING",
-    "2. 440Hz AMP COMP",
-    "3. PW CENTER CAL",
-    "4. AUTO CALIBRATE",
-    "5. RESTORE DEFAULTS"
-  };
+                                                             u8g2.setFont(psilent10);
+                                                             char posHeader[12];
+                                                             snprintf(posHeader, sizeof(posHeader), "TAB %u", tabIndex + 1);
+                                                             u8g2.drawStr(96, 10, posHeader);
+                                                             u8g2.drawHLine(0, 12, 128);
 
-  const char** tabs = (topo == CalTopology::Voices4x2) ? calTabsDCO4 : calTabsDCO3;
-  const uint8_t totalTabs = 5;
-  uint8_t activeTab = tabIndex % totalTabs;
+                                                             static const char* calTabsDCO4[] = {
+                                                               "1. OSC TUNING (4x2)",
+                                                               "2. 440Hz AMP COMP",
+                                                               "3. PW CENTER CAL",
+                                                               "4. AUTO CALIBRATE",
+                                                               "5. RESTORE DEFAULTS"
+                                                             };
+                                                             static const char* calTabsDCO3[] = {
+                                                               "1. OSC 1-3 TUNING",
+                                                               "2. 440Hz AMP COMP",
+                                                               "3. PW CENTER CAL",
+                                                               "4. AUTO CALIBRATE",
+                                                               "5. RESTORE DEFAULTS"
+                                                             };
 
-  // Windowed list to fit 3 visible tabs on 128x64 display
-  uint8_t startIdx = 0;
-  if (activeTab >= 2) {
-    startIdx = activeTab - 1;
-    if (startIdx + 3 > totalTabs) startIdx = totalTabs - 3;
-  }
+                                                             const char** tabs = (topo == CalTopology::Voices4x2) ? calTabsDCO4 : calTabsDCO3;
+                                                             const uint8_t totalTabs = 5;
+                                                             uint8_t activeTab = tabIndex % totalTabs;
 
-  u8g2.setFont(u8g2_font_6x10_tf);
-  for (uint8_t i = 0; i < 3; ++i) {
-    uint8_t idx = startIdx + i;
-    uint8_t y = 24 + (i * 11);
+                                                             uint8_t startIdx = 0;
+                                                             if (activeTab >= 2) {
+                                                               startIdx = activeTab - 1;
+                                                               if (startIdx + 3 > totalTabs) startIdx = totalTabs - 3;
+                                                             }
 
-    if (idx == activeTab) {
-      u8g2.drawBox(2, y - 9, 124, 11);
-      u8g2.setDrawColor(0);
-      u8g2.drawStr(4, y, tabs[idx]);
-      u8g2.setDrawColor(1);
-    } else {
-      u8g2.drawStr(4, y, tabs[idx]);
-    }
-  }
+                                                             u8g2.setFont(psilent10);
+                                                             for (uint8_t i = 0; i < 3; ++i) {
+                                                               uint8_t idx = startIdx + i;
+                                                               uint8_t y = 24 + (i * 11);
 
-  u8g2.drawHLine(0, 52, 128);
-  u8g2.setFont(u8g2_font_4x6_tf);
-  u8g2.drawStr(2, 60, "ROTATE: SCROLL TABS");
-  u8g2.drawStr(80, 60, "PUSH: SELECT");
-}
+                                                               if (idx == activeTab) {
+                                                                 u8g2.drawBox(2, y - 9, 124, 11);
+                                                                 u8g2.setDrawColor(0);
+                                                                 u8g2.drawStr(4, y, tabs[idx]);
+                                                                 u8g2.setDrawColor(1);
+                                                               } else {
+                                                                 u8g2.drawStr(4, y, tabs[idx]);
+                                                               }
+                                                             }
 
-// ---------------------------------------------------------------------------
-// VIEW 3: Manual Calibration Active Tuner
-// ---------------------------------------------------------------------------
-static void draw_view_manual_cal(CalTopology topo, uint8_t stage, int32_t gap, int8_t off, uint16_t a440, uint16_t pw) {
-  char toastBuf[24];
-  screen_cal_format_toast(topo, stage, toastBuf, sizeof(toastBuf));
+                                                             u8g2.drawHLine(0, 50, 128);
+                                                             u8g2.setFont(psilent10);
+                                                             u8g2.drawStr(2, 61, "ROTATE: SCROLL");
+                                                             u8g2.drawStr(72, 61, "PUSH: SELECT");
+                                                           }
 
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.drawStr(2, 9, toastBuf);
-  u8g2.drawHLine(0, 11, 128);
+                                                           // ---------------------------------------------------------------------------
+                                                           // VIEW 3: Manual Calibration Active Tuner
+                                                           // ---------------------------------------------------------------------------
+                                                           static void draw_view_manual_cal(CalTopology topo, uint8_t stage, int32_t gap, int8_t off, uint16_t a440, uint16_t pw) {
+                                                             char toastBuf[24];
+                                                             screen_cal_format_toast(topo, stage, toastBuf, sizeof(toastBuf));
 
-  u8g2.drawFrame(14, 15, 100, 10);
-  u8g2.drawVLine(64, 13, 14);
+                                                             u8g2.setFont(psilent12);
+                                                             u8g2.drawStr(2, 10, toastBuf);
+                                                             u8g2.drawHLine(0, 12, 128);
 
-  int32_t clampedGap = gap;
-  if (clampedGap < -50) clampedGap = -50;
-  if (clampedGap > 50)  clampedGap = 50;
-  uint8_t markerX = 64 + (clampedGap * 46 / 50);
-  u8g2.drawBox(markerX - 2, 17, 5, 6);
+                                                             u8g2.drawFrame(14, 15, 100, 10);
+                                                             u8g2.drawVLine(64, 13, 14);
 
-  u8g2.setFont(u8g2_font_5x7_tf);
-  char buf[32];
-  snprintf(buf, sizeof(buf), "GAP: %ld", (long)gap);
-  u8g2.drawStr(4, 34, buf);
-  snprintf(buf, sizeof(buf), "OFF: %d", off);
-  u8g2.drawStr(70, 34, buf);
-  snprintf(buf, sizeof(buf), "440: %u", a440);
-  u8g2.drawStr(4, 45, buf);
-  snprintf(buf, sizeof(buf), "PW: %u", pw);
-  u8g2.drawStr(70, 45, buf);
+                                                             int32_t clampedGap = gap;
+                                                             if (clampedGap < -50) clampedGap = -50;
+                                                             if (clampedGap > 50)  clampedGap = 50;
+                                                             uint8_t markerX = 64 + (clampedGap * 46 / 50);
+                                                             u8g2.drawBox(markerX - 2, 17, 5, 6);
 
-  u8g2.drawHLine(0, 49, 128);
-  snprintf(buf, sizeof(buf), "STAGE %u / %u", stage + 1, screen_cal_stage_max(topo) + 1);
-  u8g2.drawStr(28, 59, buf);
-}
+                                                             u8g2.setFont(psilent10);
+                                                             char buf[32];
+                                                             snprintf(buf, sizeof(buf), "GAP: %ld", (long)gap);
+                                                             u8g2.drawStr(4, 35, buf);
+                                                             snprintf(buf, sizeof(buf), "OFF: %d", off);
+                                                             u8g2.drawStr(70, 35, buf);
+                                                             snprintf(buf, sizeof(buf), "440: %u", a440);
+                                                             u8g2.drawStr(4, 46, buf);
+                                                             snprintf(buf, sizeof(buf), "PW: %u", pw);
+                                                             u8g2.drawStr(70, 46, buf);
 
-static void draw_view_save_select(uint8_t pNum, const char* pName) {
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.drawStr(12, 12, "--- SAVE PRESET ---");
-  u8g2.drawHLine(0, 15, 128);
+                                                             u8g2.drawHLine(0, 49, 128);
+                                                             snprintf(buf, sizeof(buf), "STAGE %u / %u", stage + 1, screen_cal_stage_max(topo) + 1);
+                                                             u8g2.drawStr(28, 60, buf);
+                                                           }
 
-  char buf[24];
-  snprintf(buf, sizeof(buf), "Target: P%02u", pNum);
-  u8g2.drawStr(16, 32, buf);
-  snprintf(buf, sizeof(buf), "\"%s\"", pName);
-  u8g2.drawStr(16, 46, buf);
+                                                           static void draw_view_save_select(uint8_t pNum, const char* pName) {
+                                                             u8g2.setFont(psilent14);
+                                                             u8g2.drawStr(10, 12, "SAVE PRESET");
+                                                             u8g2.drawHLine(0, 15, 128);
 
-  u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(8, 60, "Turn knob to select slot");
-}
+                                                             u8g2.setFont(psilent12);
+                                                             char buf[24];
+                                                             snprintf(buf, sizeof(buf), "Target: P%02u", pNum);
+                                                             u8g2.drawStr(16, 32, buf);
+                                                             snprintf(buf, sizeof(buf), "\"%s\"", pName);
+                                                             u8g2.drawStr(16, 46, buf);
 
-static void draw_view_save_name(const char* pName, uint8_t pChar) {
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.drawStr(16, 12, "--- EDIT NAME ---");
-  u8g2.drawHLine(0, 15, 128);
+                                                             u8g2.setFont(psilent10);
+                                                             u8g2.drawStr(8, 60, "Turn knob to select slot");
+                                                           }
 
-  uint8_t startX = 16;
-  uint8_t startY = 34;
-  u8g2.drawFrame(12, 22, 104, 18);
+                                                           static void draw_view_save_name(const char* pName, uint8_t pChar) {
+                                                             u8g2.setFont(psilent14);
+                                                             u8g2.drawStr(16, 12, "EDIT NAME");
+                                                             u8g2.drawHLine(0, 15, 128);
 
-  for (uint8_t i = 0; i < 16; ++i) {
-    char c = pName[i] ? pName[i] : ' ';
-    char s[2] = {c, '\0'};
-    uint8_t charX = startX + (i * 6);
+                                                             uint8_t startX = 16;
+                                                             uint8_t startY = 34;
+                                                             u8g2.drawFrame(12, 22, 104, 18);
 
-    if (pChar == i) {
-      u8g2.drawBox(charX - 1, startY - 8, 7, 10);
-      u8g2.setDrawColor(0);
-      u8g2.drawStr(charX, startY, s);
-      u8g2.setDrawColor(1);
-    } else {
-      u8g2.drawStr(charX, startY, s);
-    }
-  }
+                                                             // Using monospace psilent12m for exact alignment of characters
+                                                             u8g2.setFont(psilent12m);
+                                                             for (uint8_t i = 0; i < 16; ++i) {
+                                                               char c = pName[i] ? pName[i] : ' ';
+                                                               char s[2] = {c, '\0'};
+                                                               uint8_t charX = startX + (i * 6);
 
-  u8g2.setFont(u8g2_font_5x7_tf);
-  char posBuf[16];
-  snprintf(posBuf, sizeof(posBuf), "Cursor: %u/16", pChar + 1);
-  u8g2.drawStr(36, 56, posBuf);
-}
+                                                               if (pChar == i) {
+                                                                 u8g2.drawBox(charX - 1, startY - 8, 7, 10);
+                                                                 u8g2.setDrawColor(0);
+                                                                 u8g2.drawStr(charX, startY, s);
+                                                                 u8g2.setDrawColor(1);
+                                                               } else {
+                                                                 u8g2.drawStr(charX, startY, s);
+                                                               }
+                                                             }
 
-// ---------------------------------------------------------------------------
-// Core 0 Non-Blocking Event-Driven Refresh
-// ---------------------------------------------------------------------------
-// Core 0 Non-Blocking Event-Driven Refresh
-void update_u8g2_core0() {
-  uint32_t now = millis();
+                                                             u8g2.setFont(psilent10);
+                                                             char posBuf[16];
+                                                             snprintf(posBuf, sizeof(posBuf), "Cursor: %u/16", pChar + 1);
+                                                             u8g2.drawStr(36, 56, posBuf);
+                                                           }
 
-  // Rate limiter
-  if (now - lastOledRefreshMillis < MIN_OLED_INTERVAL_MS) {
-    return;
-  }
+                                                           // ---------------------------------------------------------------------------
+                                                           // Core 0 Non-Blocking Event-Driven Refresh
+                                                           // ---------------------------------------------------------------------------
+                                                           void update_u8g2_core0() {
+                                                             uint32_t now = millis();
 
-  // Quick State Check under Lock
-  uint8_t pNum;
-  char pName[17];
-  uint8_t pChar;
-  uint8_t o1, o2, sub;
-  uint16_t a1, d1, s1, r1;
-  uint16_t a2, d2, s2, r2;
-  const char* pToastName;
-  int32_t pToastVal;
-  bool toastActive;
-  CalTopology topo;
-  uint8_t stage;
-  int32_t gap;
-  int8_t off;
-  uint16_t a440, pw;
-  ScreenMode mode;
+                                                             // Rate limiter
+                                                             if (now - lastOledRefreshMillis < MIN_OLED_INTERVAL_MS) {
+                                                               return;
+                                                             }
 
-  screen_state_lock();
-  mode = static_cast<ScreenMode>(serialSignal);
+                                                             // Quick State Check under Lock
+                                                             uint8_t pNum;
+                                                             char pName[17];
+                                                             uint8_t pChar;
+                                                             uint8_t o1, o2, sub;
+                                                             uint16_t a1, d1, s1, r1;
+                                                             uint16_t a2, d2, s2, r2;
+                                                             const char* pToastName;
+                                                             int32_t pToastVal;
+                                                             bool toastActive;
+                                                             CalTopology topo;
+                                                             uint8_t stage;
+                                                             int32_t gap;
+                                                             int8_t off;
+                                                             uint16_t a440, pw;
+                                                             ScreenMode mode;
 
-  // Update tab position
-  if (mode == ScreenMode::CalibrationMenu) {
-    if (paramNumber == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
-      currentCalMenuIndex = (uint8_t)paramValue;
-    }
-  }
+                                                             screen_state_lock();
+                                                             mode = static_cast<ScreenMode>(serialSignal);
+                                                             currentCalMenuIndex = calibrationMenuIndex;
 
-  pNum = presetNumber;
-  snapshot_preset_name(pName);
-  pChar = presetChar;
-  o1 = OSC1Level;
-  o2 = OSC2Level;
-  sub = SUBLevel;
-  a1 = ADSR1Attack;
-  d1 = ADSR1Decay;
-  s1 = ADSR1Sustain;
-  r1 = ADSR1Release;
-  a2 = ADSR2Attack;
-  d2 = ADSR2Decay;
-  s2 = ADSR2Sustain;
-  r2 = ADSR2Release;
-  toastActive = paramChangeTimerFlag;
-  pToastName = paramName;
-  pToastVal = paramValue;
-  topo = screenCalTopology;
-  stage = manualCalibrationStage;
-  gap = calibrationGap;
-  off = offset;
-  a440 = ampComp440Display;
-  pw = calPwCenterDisplay;
-  screen_state_unlock();
+                                                             pNum = presetNumber;
+                                                             snapshot_preset_name(pName);
+                                                             pChar = presetChar;
+                                                             o1 = OSC1Level;
+                                                             o2 = OSC2Level;
+                                                             sub = SUBLevel;
+                                                             a1 = ADSR1Attack;
+                                                             d1 = ADSR1Decay;
+                                                             s1 = ADSR1Sustain;
+                                                             r1 = ADSR1Release;
+                                                             a2 = ADSR2Attack;
+                                                             d2 = ADSR2Decay;
+                                                             s2 = ADSR2Sustain;
+                                                             r2 = ADSR2Release;
+                                                             toastActive = paramChangeTimerFlag;
+                                                             pToastName = paramName;
+                                                             pToastVal = paramValue;
+                                                             topo = screenCalTopology;
+                                                             stage = manualCalibrationStage;
+                                                             gap = calibrationGap;
+                                                             off = offset;
+                                                             a440 = ampComp440Display;
+                                                             pw = calPwCenterDisplay;
+                                                             screen_state_unlock();
 
-  // Detect state changes to trigger redraw
-  if (mode != lastScreenMode ||
-    pNum != lastPresetNum ||
-    currentCalMenuIndex != lastCalMenuIndex ||
-    stage != lastCalStage ||
-    gap != lastCalGap ||
-    o1 != lastO1 || o2 != lastO2 || sub != lastSub ||
-    a1 != lastA1 || d1 != lastD1 || s1 != lastS1 || r1 != lastR1 ||
-    a2 != lastA2 || d2 != lastD2 || s2 != lastS2 || r2 != lastR2 ||
-    toastActive != lastToastActive) {
-    oledDirty = true;
-    }
+                                                             // Detect state changes to trigger redraw
+                                                             if (mode != lastScreenMode ||
+                                                               pNum != lastPresetNum ||
+                                                               currentCalMenuIndex != lastCalMenuIndex ||
+                                                               stage != lastCalStage ||
+                                                               gap != lastCalGap ||
+                                                               o1 != lastO1 || o2 != lastO2 || sub != lastSub ||
+                                                               a1 != lastA1 || d1 != lastD1 || s1 != lastS1 || r1 != lastR1 ||
+                                                               a2 != lastA2 || d2 != lastD2 || s2 != lastS2 || r2 != lastR2 ||
+                                                               toastActive != lastToastActive) {
+                                                               oledDirty = true;
+                                                               }
 
-    if (!oledDirty) {
-      return;
-    }
+                                                               if (!oledDirty) {
+                                                                 return;
+                                                               }
 
-    // Update tracker variables
-    lastScreenMode = mode;
-    lastPresetNum = pNum;
-    lastCalMenuIndex = currentCalMenuIndex;
-    lastCalStage = stage;
-    lastCalGap = gap;
-    lastO1 = o1; lastO2 = o2; lastSub = sub;
-    lastA1 = a1; lastD1 = d1; lastS1 = s1; lastR1 = r1;
-    lastA2 = a2; lastD2 = d2; lastS2 = s2; lastR2 = r2;
-    lastToastActive = toastActive;
-    lastOledRefreshMillis = now;
-    oledDirty = false;
+                                                               // Hold previous screen without blacking out during UART preset bursts
+                                                               if (mode == ScreenMode::Silent) {
+                                                                 return;
+                                                               }
 
-    if (mode == ScreenMode::Silent) {
-      u8g2.clearBuffer();
-      u8g2.sendBuffer();
-      return;
-    }
+                                                               // Update tracker variables
+                                                               lastScreenMode = mode;
+                                                               lastPresetNum = pNum;
+                                                               lastCalMenuIndex = currentCalMenuIndex;
+                                                               lastCalStage = stage;
+                                                               lastCalGap = gap;
+                                                               lastO1 = o1; lastO2 = o2; lastSub = sub;
+                                                               lastA1 = a1; lastD1 = d1; lastS1 = s1; lastR1 = r1;
+                                                               lastA2 = a2; lastD2 = d2; lastS2 = s2; lastR2 = r2;
+                                                               lastToastActive = toastActive;
+                                                               lastOledRefreshMillis = now;
+                                                               oledDirty = false;
 
-    u8g2.clearBuffer();
+                                                               u8g2.clearBuffer();
 
-    switch (mode) {
-      case ScreenMode::CalibrationMenu:
-        draw_view_cal_menu(currentCalMenuIndex, topo);
-        break;
+                                                               switch (mode) {
+                                                                 case ScreenMode::CalibrationMenu:
+                                                                   draw_view_cal_menu(currentCalMenuIndex, topo);
+                                                                   break;
 
-      case ScreenMode::ManualCalibration:
-        draw_view_manual_cal(topo, stage, gap, off, a440, pw);
-        break;
+                                                                 case ScreenMode::ManualCalibration:
+                                                                   draw_view_manual_cal(topo, stage, gap, off, a440, pw);
+                                                                   break;
 
-      case ScreenMode::SaveSelectPreset:
-        draw_view_save_select(pNum, pName);
-        break;
+                                                                 case ScreenMode::SaveSelectPreset:
+                                                                   draw_view_save_select(pNum, pName);
+                                                                   break;
 
-      case ScreenMode::SaveSetName:
-        draw_view_save_name(pName, pChar);
-        break;
+                                                                 case ScreenMode::SaveSetName:
+                                                                   draw_view_save_name(pName, pChar);
+                                                                   break;
 
-      case ScreenMode::SaveCompleted:
-        u8g2.drawFrame(10, 10, 108, 44);
-        u8g2.setFont(u8g2_font_7x14B_tr);
-        u8g2.drawStr(18, 28, "PRESET SAVED!");
-        break;
+                                                                 case ScreenMode::SaveCompleted:
+                                                                   u8g2.drawFrame(10, 10, 108, 44);
+                                                                   u8g2.setFont(psilent18);
+                                                                   u8g2.drawStr(14, 36, "SAVED!");
+                                                                   break;
 
-      case ScreenMode::PresetScroll:
-      case ScreenMode::LoadSaveExit:
-      default:
-        draw_view_preset(pNum, pName, o1, o2, sub, a1, d1, s1, r1, a2, d2, s2, r2, toastActive, pToastName, pToastVal, topo);
-        break;
-    }
+                                                                 case ScreenMode::PresetScroll:
+                                                                 case ScreenMode::LoadSaveExit:
+                                                                 default:
+                                                                   draw_view_preset(pNum, pName, o1, o2, sub, a1, d1, s1, r1, a2, d2, s2, r2, toastActive, pToastName, pToastVal, topo);
+                                                                   break;
+                                                               }
 
-    u8g2.sendBuffer();
-}
+                                                               u8g2.sendBuffer();
+                                                           }

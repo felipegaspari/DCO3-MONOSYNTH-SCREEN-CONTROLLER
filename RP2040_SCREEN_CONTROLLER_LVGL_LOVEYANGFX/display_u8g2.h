@@ -2,6 +2,7 @@
 #define __DISPLAY_U8G2_H__
 
 #include <U8g2lib.h>
+#include "psilent_fonts.h"
 #include "displayParams.h"
 #include "screen_mode.h"
 #include "screen_target.h"
