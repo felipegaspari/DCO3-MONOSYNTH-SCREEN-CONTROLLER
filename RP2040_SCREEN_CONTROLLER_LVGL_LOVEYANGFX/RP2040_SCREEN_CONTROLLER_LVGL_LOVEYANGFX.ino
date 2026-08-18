@@ -27,8 +27,9 @@
 static const uint16_t screenWidth = 480;
 static const uint16_t screenHeight = 320;
 
-enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 10 };
-static lv_color_t buf[SCREENBUFFER_SIZE_PIXELS];
+enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 8 };
+static lv_color_t buf1[SCREENBUFFER_SIZE_PIXELS];
+static lv_color_t buf2[SCREENBUFFER_SIZE_PIXELS];
 
 LGFX tft; /* TFT instance */
 
@@ -123,7 +124,15 @@ void setup1() {
 
   static lv_disp_t *disp;
   disp = lv_display_create(screenWidth, screenHeight);
-  lv_display_set_buffers(disp, buf, NULL, SCREENBUFFER_SIZE_PIXELS * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
+  
+  lv_display_set_buffers(
+    disp, 
+    buf1, 
+    buf2, 
+    SCREENBUFFER_SIZE_PIXELS * sizeof(lv_color_t), 
+    LV_DISPLAY_RENDER_MODE_PARTIAL
+  );
+
   lv_display_set_flush_cb(disp, my_disp_flush);
 
   lv_tick_set_cb(my_tick_get_cb);
@@ -230,9 +239,14 @@ case ScreenMode::SaveCompleted:
       draw_preset_scroll_1(currentMode);
       break;
 
-    case ScreenMode::Silent:
-      // SCREEN SILENCE - no immediate action, only the watchdog below
+case ScreenMode::Silent:
       silentModeEnteredMillis = millis();
+      
+      // ADD THIS: Clear any pending param change from before the load
+      screen_state_lock();
+      paramChangeFlag = false;
+      screen_state_unlock();
+      
       break;
 
     case ScreenMode::CalibrationMenu:
@@ -309,11 +323,14 @@ static void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode) {
   if (charSelected) {
     lv_textarea_set_cursor_pos(ui_PresetNewName, charPos);
   }
-  if (scrolled) {
+if (scrolled) {
     lv_obj_add_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
     draw_preset_scroll_1(mode);
-  }
-  if (paramChanged) {
+    paramChangeTimerFlag = false;
+    
+    // FORCE immediate rasterization and push to screen right now!
+    lv_refr_now(NULL);
+  } else if (paramChanged) {
     draw_param_1();
   }
 }
@@ -335,19 +352,18 @@ static void SCREEN_HOT(updateLevelBars)(ScreenMode mode) {
   }
 
   if (mode == ScreenMode::Silent) {
-    // In silent mode, always update all three bars.
-    lv_bar_set_value(ui_OSC1Level, osc1, LV_ANIM_ON);
-    lv_bar_set_value(ui_OSC2Level, osc2, LV_ANIM_ON);
-    lv_bar_set_value(ui_SUBLevel, sub, LV_ANIM_ON);
+    lv_bar_set_value(ui_OSC1Level, osc1, LV_ANIM_OFF); // <--- Change to LV_ANIM_OFF
+    lv_bar_set_value(ui_OSC2Level, osc2, LV_ANIM_OFF);
+    lv_bar_set_value(ui_SUBLevel, sub, LV_ANIM_OFF);
   } else {
     if (bars & LEVEL_BAR_OSC1) {
-      lv_bar_set_value(ui_OSC1Level, osc1, LV_ANIM_ON);
+      lv_bar_set_value(ui_OSC1Level, osc1, LV_ANIM_OFF);
     }
     if (bars & LEVEL_BAR_OSC2) {
-      lv_bar_set_value(ui_OSC2Level, osc2, LV_ANIM_ON);
+      lv_bar_set_value(ui_OSC2Level, osc2, LV_ANIM_OFF);
     }
     if (bars & LEVEL_BAR_SUB) {
-      lv_bar_set_value(ui_SUBLevel, sub, LV_ANIM_ON);
+      lv_bar_set_value(ui_SUBLevel, sub, LV_ANIM_OFF);
     }
   }
 }
@@ -377,16 +393,16 @@ static void SCREEN_HOT(updateADSRBars)() {
   screen_state_unlock();
 
   if (adsr1) {
-    lv_bar_set_value(ui_ADSR1AttackBar, 0.03125f * a1a, LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR1DecayBar, 0.03125f * a1d, LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR1SustainBar, 0.03125f * a1s, LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR1ReleaseBar, 0.03125f * a1r, LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR1AttackBar, 0.03125f * a1a, LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR1DecayBar, 0.03125f * a1d, LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR1SustainBar, 0.03125f * a1s, LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR1ReleaseBar, 0.03125f * a1r, LV_ANIM_OFF);
   }
   if (adsr2) {
-    lv_bar_set_value(ui_ADSR2AttackBar, 0.03125f * a2a, LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR2DecayBar, 0.03125f * a2d, LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR2SustainBar, 0.03125f * a2s, LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR2ReleaseBar, 0.03125f * a2r, LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR2AttackBar, 0.03125f * a2a, LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR2DecayBar, 0.03125f * a2d, LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR2SustainBar, 0.03125f * a2s, LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR2ReleaseBar, 0.03125f * a2r, LV_ANIM_OFF);
   }
 }
 
@@ -414,7 +430,7 @@ static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode) {
 
   if (mode == ScreenMode::CalibrationMenu) {
     if (id == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
-      lv_tabview_set_active(ui_calibrationTabs, value, LV_ANIM_ON);
+      lv_tabview_set_active(ui_calibrationTabs, value, LV_ANIM_OFF);
     }
   } else {
     drawManualCalibration();
@@ -430,6 +446,13 @@ void SCREEN_HOT(loop1)(void) {
   updateADSRBars();
   updateCalibrationUI(currentMode);
 
-  lv_timer_handler();
-  delay(2);  // try if it works
+  // Let LVGL run and tell us exactly how many ms until it needs to run again
+  uint32_t time_till_next = lv_timer_handler();
+  
+  // Sleep for that amount, but max out at 5ms so we stay highly responsive
+  if (time_till_next > 5) time_till_next = 5;
+  if (time_till_next == 0) time_till_next = 1;
+  
+  delay(time_till_next); 
+  //lv_timer_handler();
 }

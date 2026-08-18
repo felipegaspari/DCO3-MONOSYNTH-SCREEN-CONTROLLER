@@ -3,9 +3,6 @@
 
 // #define SERIAL_FRAMING_COBS  // must match DCO/Input; host: dco_control --cobs
 
-// Preset-scroll 'q' is [preset#][16 chars] = 17. DCO/Input default is 8.
-#define SERIAL_INNER_MAX_PAYLOAD 17
-
 #include <pico/mutex.h>
 
 #include "project_config.h"

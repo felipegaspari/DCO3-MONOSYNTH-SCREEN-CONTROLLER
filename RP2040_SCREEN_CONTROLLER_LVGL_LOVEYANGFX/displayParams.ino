@@ -33,7 +33,7 @@ volatile uint16_t ADSR2Sustain = 0;
 volatile uint16_t ADSR2Release = 0;
 
 // Type alias for the screen's parameter router value type.
-// NOTE: avoid using this alias in function parameter lists because the Arduino
+// NOTE: avoid SCREEN_HOT(using this alias in function parameter lists because the Arduino
 // build system generates prototypes before these typedefs.
 using ScreenParamValueT = int32_t;
 using ScreenParamDescriptor = ParamDescriptorT<ScreenParamValueT>;
@@ -44,22 +44,22 @@ using ScreenParamDescriptor = ParamDescriptorT<ScreenParamValueT>;
 // ---------------------------------------------------------------------------
 
 // Mixer levels -> bar values (bitmask so simultaneous updates aren't lost)
-static void apply_param_osc1_level(int32_t v) {
+static void SCREEN_HOT(apply_param_osc1_level)(int32_t v) {
   OSC1Level     = (uint8_t)v;
   levelBarFlag |= LEVEL_BAR_OSC1;
 }
 
-static void apply_param_osc2_level(int32_t v) {
+static void SCREEN_HOT(apply_param_osc2_level)(int32_t v) {
   OSC2Level     = (uint8_t)v;
   levelBarFlag |= LEVEL_BAR_OSC2;
 }
 
-static void apply_param_osc3_level(int32_t v) {
+static void SCREEN_HOT(apply_param_osc3_level)(int32_t v) {
   OSC3Level    = (uint8_t)v;
   // No dedicated OSC3 bar widget yet — toast still updates via draw_param_1.
 }
 
-static void apply_param_sub_level(int32_t v) {
+static void SCREEN_HOT(apply_param_sub_level)(int32_t v) {
   SUBLevel      = (uint8_t)v;
   levelBarFlag |= LEVEL_BAR_SUB;
 }
@@ -158,7 +158,7 @@ static const size_t screenParamTableSize =
   sizeof(screenParamTable) / sizeof(screenParamTable[0]);
 
 // Show param name/value toast on the bottom message panel. Core1 only.
-void draw_param_1() {
+void SCREEN_HOT(draw_param_1)() {
 
   paramChangeLastMillis = millis();
   paramChangeTimerFlag = true;
@@ -180,7 +180,7 @@ void draw_param_1() {
   lv_obj_remove_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
 }
 
-void draw_preset_scroll_1(ScreenMode mode) {
+void SCREEN_HOT(draw_preset_scroll_1)(ScreenMode mode) {
 
   char name[17];
   byte num;
@@ -219,7 +219,7 @@ void draw_preset_scroll_1(ScreenMode mode) {
 
 // Refresh manual-calibration labels (offset, OSC index, gap) on the cal panel.
 // Core1 only.
-void drawManualCalibration() {
+void SCREEN_HOT(drawManualCalibration)() {
   int8_t      offsetNow;
   uint16_t    amp440;
   uint16_t    pwCenter;
@@ -269,7 +269,7 @@ void drawManualCalibration() {
 // screen signals, etc.) via the shared param_router table above. This is kept
 // separate from the user-facing text so setDisplayParam() is easier to reason
 // about.
-static void applyParamToModelAndSignals() {
+static void SCREEN_HOT(applyParamToModelAndSignals)() {
   param_router_apply<ScreenParamValueT>(
     screenParamTable,
     screenParamTableSize,
@@ -280,7 +280,7 @@ static void applyParamToModelAndSignals() {
 
 // Router entry point for the 'y' nav path (Serial.ino). Caller must hold
 // screen_state_lock().
-void applyNavParam(uint8_t id, int32_t value) {
+void SCREEN_HOT(applyNavParam)(uint8_t id, int32_t value) {
   param_router_apply<ScreenParamValueT>(
     screenParamTable,
     screenParamTableSize,
@@ -291,9 +291,12 @@ void applyNavParam(uint8_t id, int32_t value) {
 
 // Map paramNumber to label text + apply model side-effects. Runs on Core0
 // with screen_state_lock() held (called from the serial param handlers).
-void setDisplayParam() {
+void  setDisplayParam() {
   // First update internal model / screen state.
   applyParamToModelAndSignals();
+  applyParamToModelAndSignals();
+
+  paramName = ""; // <--- ADD THIS: clear stale string
 
   switch (static_cast<ParamId>(paramNumber)) {
     case ParamId::PARAM_OSC1_SAW_ENABLE:
@@ -755,6 +758,7 @@ void setDisplayParam() {
       break;
 
     default:
+      paramName = "";
       break;
   }
 }
