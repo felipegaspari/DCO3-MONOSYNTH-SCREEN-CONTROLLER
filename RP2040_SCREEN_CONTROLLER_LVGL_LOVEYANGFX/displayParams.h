@@ -96,6 +96,8 @@ extern volatile uint16_t ADSR2Decay;
 extern volatile uint16_t ADSR2Sustain;
 extern volatile uint16_t ADSR2Release;
 
+extern lv_obj_t* ui_calGapTrack;
+
 // Lock-Free Drawing Shells
 void draw_param_1(const char* name, int32_t value);
 void draw_preset_scroll_1(ScreenMode mode, uint8_t num, const char* name, uint8_t charPos);

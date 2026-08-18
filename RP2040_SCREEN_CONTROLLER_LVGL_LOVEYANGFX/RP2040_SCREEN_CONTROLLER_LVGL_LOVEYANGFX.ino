@@ -267,9 +267,10 @@ static void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
       lv_scr_load(ui_Main);
       lv_obj_add_flag(ui_PresetSavePanel, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(ui_PresetNewName, LV_OBJ_FLAG_HIDDEN);
+      if (ui_calGapTrack) lv_obj_add_flag(ui_calGapTrack, LV_OBJ_FLAG_HIDDEN); // <--- HIDE BAR
       currentMode = ScreenMode::PresetScroll;
-      draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
-      break;
+    draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
+    break;
 
     case ScreenMode::SaveSelectPreset:
       {
@@ -307,17 +308,20 @@ static void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
       silentModeEnteredMillis = millis();
       break;
 
+
     case ScreenMode::CalibrationMenu:
+      if (ui_calGapTrack) lv_obj_add_flag(ui_calGapTrack, LV_OBJ_FLAG_HIDDEN); // <--- HIDE BAR IN TAB MENU
       lv_obj_add_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
-      lv_scr_load(ui_MANUALCALIBRATION);
-      lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF);  // <--- ADD THIS
-      break;
+    lv_scr_load(ui_MANUALCALIBRATION);
+    lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF);
+    break;
 
     case ScreenMode::ManualCalibration:
       lv_obj_remove_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
+      if (ui_calGapTrack) lv_obj_remove_flag(ui_calGapTrack, LV_OBJ_FLAG_HIDDEN); // <--- SHOW BAR
       lv_scr_load(ui_MANUALCALIBRATION);
-      drawManualCalibration(snap);
-      break;
+    drawManualCalibration(snap);
+    break;
 
     default:
       break;

@@ -123,8 +123,8 @@ static inline void draw_vert_meter(uint8_t x, uint8_t y, uint8_t w, uint8_t h, u
 static void draw_dynamic_adsr(uint8_t x, uint8_t y, uint8_t w, uint8_t h,
                               uint16_t a, uint16_t d, uint16_t s, uint16_t r, const char* label) {
   u8g2.drawFrame(x, y, w, h);
-  u8g2.setFont(psilent10);
-  u8g2.drawStr(x + 2, y + 8, label);
+  u8g2.setFont(u8g2_font_4x6_tf);
+  u8g2.drawStr(x + 2, y + 6, label);
 
   uint8_t innerW = w - 16;
   uint8_t innerH = h - 4;
@@ -171,20 +171,20 @@ static void draw_view_preset(uint8_t pNum, const char* pName, uint8_t o1, uint8_
                              uint16_t a1, uint16_t d1, uint16_t s1, uint16_t r1,
                              uint16_t a2, uint16_t d2, uint16_t s2, uint16_t r2,
                              bool toastActive, const char* pToastName, int32_t pToastVal, CalTopology topo) {
-  u8g2.setFont(psilent12);
+  u8g2.setFont(u8g2_font_7x14B_tf);
   char header[24];
-  snprintf(header, sizeof(header), "P%02u: %s", pNum, pName);
+  snprintf(header, sizeof(header), "P%02u:%s", pNum, pName);
   u8g2.drawStr(2, 10, header);
   u8g2.drawHLine(0, 12, 128);
 
-  u8g2.setFont(psilent10);
-  u8g2.drawStr(2, 22, "O1");
+  u8g2.setFont(u8g2_font_5x7_tf);
+  u8g2.drawStr(2, 21, "O1");
   draw_meter_bar(14, 15, 38, 7, o1);
 
-  u8g2.drawStr(2, 32, "O2");
+  u8g2.drawStr(2, 31, "O2");
   draw_meter_bar(14, 25, 38, 7, o2);
 
-  u8g2.drawStr(2, 42, "SB");
+  u8g2.drawStr(2, 41, "SB");
   draw_meter_bar(14, 35, 38, 7, sub);
 
   draw_dynamic_adsr(56, 14, 70, 15, a1, d1, s1, r1, "E1");
@@ -193,14 +193,14 @@ static void draw_view_preset(uint8_t pNum, const char* pName, uint8_t o1, uint8_
   u8g2.drawHLine(0, 48, 128);
 
   if (toastActive && pToastName != nullptr) {
-    u8g2.setFont(psilent12);
+    u8g2.setFont(u8g2_font_6x10_tf);
     char toast[32];
     snprintf(toast, sizeof(toast), "%s: %ld", pToastName, (long)pToastVal);
-    u8g2.drawStr(2, 60, toast);
+    u8g2.drawStr(2, 59, toast);
   } else {
-    u8g2.setFont(psilent10);
+    u8g2.setFont(u8g2_font_5x7_tf);
     const char* topStr = (topo == CalTopology::Voices4x2) ? "DCO4 [4x2 VOICES]" : "DCO3 [MONO 3-OSC]";
-    u8g2.drawStr(2, 60, topStr);
+    u8g2.drawStr(2, 58, topStr);
   }
 }
 
@@ -209,21 +209,21 @@ static void draw_view_preset(uint8_t pNum, const char* pName, uint8_t o1, uint8_
 // ---------------------------------------------------------------------------
 static void draw_view_inspector_adsr(InspectorType type, uint16_t a, uint16_t d, uint16_t s, uint16_t r,
                                      const char* pToastName, int32_t pToastVal) {
-  u8g2.setFont(psilent12);
-  if (type == InspectorType::ADSR1) u8g2.drawStr(2, 10, "ENV 1 [VCA]");
-  else if (type == InspectorType::ADSR2) u8g2.drawStr(2, 10, "ENV 2 [VCF]");
-  else u8g2.drawStr(2, 10, "ENV 3 [MOD]");
+  u8g2.setFont(u8g2_font_6x10_tf);
+  if (type == InspectorType::ADSR1) u8g2.drawStr(2, 9, "ENV 1 [VCA]");
+  else if (type == InspectorType::ADSR2) u8g2.drawStr(2, 9, "ENV 2 [VCF]");
+  else u8g2.drawStr(2, 9, "ENV 3 [MOD]");
 
   if (pToastName && pToastName[0] != '\0') {
-    u8g2.setFont(psilent10);
+    u8g2.setFont(u8g2_font_5x8_tf);
     char toastStr[20];
     snprintf(toastStr, sizeof(toastStr), "%ld", (long)pToastVal);
     uint8_t strW = u8g2.getStrWidth(toastStr);
-    u8g2.drawStr(126 - strW, 10, toastStr);
+    u8g2.drawStr(126 - strW, 9, toastStr);
   }
-  u8g2.drawHLine(0, 12, 128);
+  u8g2.drawHLine(0, 11, 128);
 
-  const uint8_t x0 = 4, yBase = 47, yTop = 16, maxGraphW = 120;
+  const uint8_t x0 = 4, yBase = 47, yTop = 15, maxGraphW = 120;
 
   uint8_t aW = 4 + ((uint32_t)a * 34) / 1024;
   uint8_t dW = 4 + ((uint32_t)d * 34) / 1024;
@@ -297,31 +297,31 @@ static void draw_view_inspector_adsr(InspectorType type, uint16_t a, uint16_t d,
   u8g2.setFont(u8g2_font_5x7_tf);
 
   if (hlA) {
-    u8g2.drawBox(2, 51, 29, 12);
+    u8g2.drawBox(2, 51, 29, 11);
     u8g2.setDrawColor(0);
   }
-  u8g2.drawStr(4, 60, strA);
+  u8g2.drawStr(4, 59, strA);
   u8g2.setDrawColor(1);
 
   if (hlD) {
-    u8g2.drawBox(33, 51, 29, 12);
+    u8g2.drawBox(33, 51, 29, 11);
     u8g2.setDrawColor(0);
   }
-  u8g2.drawStr(35, 60, strD);
+  u8g2.drawStr(35, 59, strD);
   u8g2.setDrawColor(1);
 
   if (hlS) {
-    u8g2.drawBox(64, 51, 29, 12);
+    u8g2.drawBox(64, 51, 29, 11);
     u8g2.setDrawColor(0);
   }
-  u8g2.drawStr(66, 60, strS);
+  u8g2.drawStr(66, 59, strS);
   u8g2.setDrawColor(1);
 
   if (hlR) {
-    u8g2.drawBox(95, 51, 31, 12);
+    u8g2.drawBox(95, 51, 31, 11);
     u8g2.setDrawColor(0);
   }
-  u8g2.drawStr(97, 60, strR);
+  u8g2.drawStr(97, 59, strR);
   u8g2.setDrawColor(1);
 }
 
@@ -329,34 +329,30 @@ static void draw_view_inspector_adsr(InspectorType type, uint16_t a, uint16_t d,
 // VIEW: Filter (VCF) Contextual Inspector
 // ---------------------------------------------------------------------------
 static void draw_view_inspector_filter(const char* pToastName, int32_t pToastVal) {
-  u8g2.setFont(psilent12);
-  u8g2.drawStr(2, 10, "VCF / FILTER [24dB]");
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(2, 9, "VCF / FILTER [24dB]");
 
   if (pToastName && pToastName[0] != '\0') {
-    u8g2.setFont(psilent10);
+    u8g2.setFont(u8g2_font_5x7_tf);
     char toastStr[24];
     snprintf(toastStr, sizeof(toastStr), "%s: %ld", pToastName, (long)pToastVal);
     uint8_t strW = u8g2.getStrWidth(toastStr);
-    u8g2.drawStr(126 - strW, 10, toastStr);
+    u8g2.drawStr(126 - strW, 9, toastStr);
   }
-  u8g2.drawHLine(0, 12, 128);
+  u8g2.drawHLine(0, 11, 128);
 
-  // Dynamic Cutoff Position from active toast or center estimate
   uint8_t cutoffX = 64;
   if (pToastName && (strstr(pToastName, "Cutoff") || strstr(pToastName, "CUTOFF"))) {
     cutoffX = 14 + ((uint32_t)(pToastVal & 0x7F) * 96) / 127;
   }
 
-  // Draw 24dB Low-Pass Filter Frequency Response Curve (y: 16..46)
   const uint8_t yFloor = 46;
   const uint8_t yFlat = 26;
   const uint8_t yPeak = 16;
 
-  // Dotted frequency grid lines
   for (uint8_t x = 4; x <= 124; x += 6) u8g2.drawPixel(x, yFloor);
   for (uint8_t y = yPeak; y <= yFloor; y += 4) u8g2.drawPixel(cutoffX, y);
 
-  // Flat passband -> Resonant Peak -> 24dB slope
   u8g2.drawLine(4, yFlat, cutoffX - 8, yFlat);
   u8g2.drawLine(4, yFlat - 1, cutoffX - 8, yFlat - 1);
 
@@ -371,11 +367,10 @@ static void draw_view_inspector_filter(const char* pToastName, int32_t pToastVal
 
   u8g2.drawDisc(cutoffX, yPeak, 2);
 
-  // Bottom info tags
   u8g2.drawHLine(0, 49, 128);
   u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(4, 60, "SLOPE: 24dB");
-  u8g2.drawStr(66, 60, "MOD: ENV2 / LFO2");
+  u8g2.drawStr(4, 59, "SLOPE: 24dB");
+  u8g2.drawStr(66, 59, "MOD: ENV2 / LFO2");
 }
 
 // ---------------------------------------------------------------------------
@@ -383,45 +378,42 @@ static void draw_view_inspector_filter(const char* pToastName, int32_t pToastVal
 // ---------------------------------------------------------------------------
 static void draw_view_inspector_oscillators(uint8_t o1, uint8_t o2, uint8_t sub,
                                             const char* pToastName, int32_t pToastVal) {
-  u8g2.setFont(psilent12);
-  u8g2.drawStr(2, 10, "OSC MIXER & WAVE");
-  u8g2.drawHLine(0, 12, 128);
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(2, 9, "OSC MIXER & WAVE");
+  u8g2.drawHLine(0, 11, 128);
 
-  // 4 Channel Vertical Meters on Left (x: 4..60, y: 15..47)
   u8g2.setFont(u8g2_font_4x6_tf);
-  u8g2.drawStr(4, 21, "O1");
-  draw_vert_meter(4, 23, 10, 24, o1);
+  u8g2.drawStr(4, 20, "O1");
+  draw_vert_meter(4, 22, 10, 24, o1);
 
-  u8g2.drawStr(18, 21, "O2");
-  draw_vert_meter(18, 23, 10, 24, o2);
+  u8g2.drawStr(18, 20, "O2");
+  draw_vert_meter(18, 22, 10, 24, o2);
 
-  u8g2.drawStr(32, 21, "O3");
-  draw_vert_meter(32, 23, 10, 24, 0);  // O3 level if bound
+  u8g2.drawStr(32, 20, "O3");
+  draw_vert_meter(32, 22, 10, 24, 0);
 
-  u8g2.drawStr(46, 21, "SB");
-  draw_vert_meter(46, 23, 10, 24, sub);
+  u8g2.drawStr(46, 20, "SB");
+  draw_vert_meter(46, 22, 10, 24, sub);
 
-  // Right Side: Pulse Width & Sync Visualizer (x: 64..124)
-  u8g2.drawFrame(64, 15, 60, 32);
+  u8g2.drawFrame(64, 14, 60, 32);
   u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(68, 24, "PULSE WIDTH");
+  u8g2.drawStr(68, 23, "PULSE WIDTH");
 
-  // PW Wave Graphic
-  u8g2.drawLine(68, 38, 78, 38);
-  u8g2.drawLine(78, 38, 78, 28);
-  u8g2.drawLine(78, 28, 98, 28);
-  u8g2.drawLine(98, 28, 98, 38);
-  u8g2.drawLine(98, 38, 118, 38);
+  u8g2.drawLine(68, 37, 78, 37);
+  u8g2.drawLine(78, 37, 78, 27);
+  u8g2.drawLine(78, 27, 98, 27);
+  u8g2.drawLine(98, 27, 98, 37);
+  u8g2.drawLine(98, 37, 118, 37);
 
   u8g2.drawHLine(0, 49, 128);
   if (pToastName && pToastName[0] != '\0') {
-    u8g2.setFont(psilent10);
+    u8g2.setFont(u8g2_font_5x7_tf);
     char toast[32];
     snprintf(toast, sizeof(toast), "%s: %ld", pToastName, (long)pToastVal);
-    u8g2.drawStr(4, 60, toast);
+    u8g2.drawStr(4, 59, toast);
   } else {
     u8g2.setFont(u8g2_font_5x7_tf);
-    u8g2.drawStr(4, 60, "O1:SAW+PULSE  O2:TRI  SYNC:OFF");
+    u8g2.drawStr(4, 59, "O1:SAW+PULSE  O2:TRI  SYNC:OFF");
   }
 }
 
@@ -429,37 +421,34 @@ static void draw_view_inspector_oscillators(uint8_t o1, uint8_t o2, uint8_t sub,
 // VIEW: LFO (1 / 2 / 3) Contextual Inspector
 // ---------------------------------------------------------------------------
 static void draw_view_inspector_lfo(InspectorType type, const char* pToastName, int32_t pToastVal) {
-  u8g2.setFont(psilent12);
-  if (type == InspectorType::LFO1) u8g2.drawStr(2, 10, "LFO 1 [PITCH/VCA]");
-  else if (type == InspectorType::LFO2) u8g2.drawStr(2, 10, "LFO 2 [PWM/VCF]");
-  else u8g2.drawStr(2, 10, "LFO 3 [MOD]");
-  u8g2.drawHLine(0, 12, 128);
+  u8g2.setFont(u8g2_font_6x10_tf);
+  if (type == InspectorType::LFO1) u8g2.drawStr(2, 9, "LFO 1 [PITCH/VCA]");
+  else if (type == InspectorType::LFO2) u8g2.drawStr(2, 9, "LFO 2 [PWM/VCF]");
+  else u8g2.drawStr(2, 9, "LFO 3 [MOD]");
+  u8g2.drawHLine(0, 11, 128);
 
-  // Large High-Res Multi-Cycle Waveform (x: 4..80, y: 16..46)
-  u8g2.drawFrame(4, 15, 78, 32);
-  for (uint8_t x = 8; x <= 78; x += 4) u8g2.drawPixel(x, 31);  // Zero line
+  u8g2.drawFrame(4, 14, 78, 32);
+  for (uint8_t x = 8; x <= 78; x += 4) u8g2.drawPixel(x, 30);
 
-  // Render Triangle/Sine wave
   for (uint8_t x = 0; x < 70; ++x) {
     int8_t yOffset = (int8_t)(sinf(x * 0.18f) * 11.0f);
-    u8g2.drawPixel(8 + x, 31 - yOffset);
+    u8g2.drawPixel(8 + x, 30 - yOffset);
   }
 
-  // Right Side: Destination & Mode tags (x: 86..124)
   u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(86, 24, "DEST:");
-  u8g2.drawStr(86, 34, (type == InspectorType::LFO1) ? "> PITCH" : "> CUTOFF");
-  u8g2.drawStr(86, 44, "FREE-RUN");
+  u8g2.drawStr(86, 23, "DEST:");
+  u8g2.drawStr(86, 33, (type == InspectorType::LFO1) ? "> PITCH" : "> CUTOFF");
+  u8g2.drawStr(86, 43, "FREE-RUN");
 
   u8g2.drawHLine(0, 49, 128);
   if (pToastName && pToastName[0] != '\0') {
-    u8g2.setFont(psilent10);
+    u8g2.setFont(u8g2_font_5x7_tf);
     char toast[32];
     snprintf(toast, sizeof(toast), "%s: %ld", pToastName, (long)pToastVal);
-    u8g2.drawStr(4, 60, toast);
+    u8g2.drawStr(4, 59, toast);
   } else {
     u8g2.setFont(u8g2_font_5x7_tf);
-    u8g2.drawStr(4, 60, "SHAPE: SINE   RATE: SYNC 1/4");
+    u8g2.drawStr(4, 59, "SHAPE: SINE   RATE: SYNC 1/4");
   }
 }
 
@@ -467,33 +456,31 @@ static void draw_view_inspector_lfo(InspectorType type, const char* pToastName, 
 // VIEW: Voice Engine & Analog Drift Contextual Inspector
 // ---------------------------------------------------------------------------
 static void draw_view_inspector_voice(const char* pToastName, int32_t pToastVal) {
-  u8g2.setFont(psilent12);
-  u8g2.drawStr(2, 10, "VOICE & DRIFT ENGINE");
-  u8g2.drawHLine(0, 12, 128);
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(2, 9, "VOICE & DRIFT ENGINE");
+  u8g2.drawHLine(0, 11, 128);
 
-  // 4 Voice Allocation Channel Dots (x: 4..64, y: 16..46)
   u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(4, 24, "VOICES:");
+  u8g2.drawStr(4, 23, "VOICES:");
   for (uint8_t v = 0; v < 4; ++v) {
     uint8_t vx = 50 + (v * 16);
-    u8g2.drawCircle(vx, 21, 5);
-    u8g2.drawDisc(vx, 21, 2);  // Active Voice dot
+    u8g2.drawCircle(vx, 20, 5);
+    u8g2.drawDisc(vx, 20, 2);
   }
 
-  // Analog Drift Dispersion Meter (y: 32..46)
-  u8g2.drawStr(4, 40, "DRIFT SPREAD:");
-  u8g2.drawFrame(74, 33, 48, 8);
-  u8g2.drawBox(76, 35, 24, 4);  // Spread meter bar
+  u8g2.drawStr(4, 39, "DRIFT SPREAD:");
+  u8g2.drawFrame(74, 32, 48, 8);
+  u8g2.drawBox(76, 34, 24, 4);
 
   u8g2.drawHLine(0, 49, 128);
   if (pToastName && pToastName[0] != '\0') {
-    u8g2.setFont(psilent10);
+    u8g2.setFont(u8g2_font_5x7_tf);
     char toast[32];
     snprintf(toast, sizeof(toast), "%s: %ld", pToastName, (long)pToastVal);
-    u8g2.drawStr(4, 60, toast);
+    u8g2.drawStr(4, 59, toast);
   } else {
     u8g2.setFont(u8g2_font_5x7_tf);
-    u8g2.drawStr(4, 60, "MODE: POLY 4x2   ALLOC: R-ROBIN");
+    u8g2.drawStr(4, 59, "MODE: POLY 4x2   ALLOC: R-ROBIN");
   }
 }
 
@@ -501,14 +488,14 @@ static void draw_view_inspector_voice(const char* pToastName, int32_t pToastVal)
 // VIEW: Calibration & Save Preset Views
 // ---------------------------------------------------------------------------
 static void draw_view_cal_menu(uint8_t tabIndex, CalTopology topo) {
-  u8g2.setFont(psilent12);
-  u8g2.drawStr(2, 10, "CALIBRATION TABS");
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(2, 9, "CALIBRATION TABS");
 
-  u8g2.setFont(psilent10);
+  u8g2.setFont(u8g2_font_5x7_tf);
   char posHeader[12];
   snprintf(posHeader, sizeof(posHeader), "TAB %u", tabIndex + 1);
-  u8g2.drawStr(96, 10, posHeader);
-  u8g2.drawHLine(0, 12, 128);
+  u8g2.drawStr(96, 9, posHeader);
+  u8g2.drawHLine(0, 11, 128);
 
   static const char* calTabsDCO4[] = {
     "1. OSC TUNING (4x2)",
@@ -535,10 +522,10 @@ static void draw_view_cal_menu(uint8_t tabIndex, CalTopology topo) {
     if (startIdx + 3 > totalTabs) startIdx = totalTabs - 3;
   }
 
-  u8g2.setFont(psilent10);
+  u8g2.setFont(u8g2_font_6x10_tf);
   for (uint8_t i = 0; i < 3; ++i) {
     uint8_t idx = startIdx + i;
-    uint8_t y = 24 + (i * 11);
+    uint8_t y = 23 + (i * 11);
 
     if (idx == activeTab) {
       u8g2.drawBox(2, y - 9, 124, 11);
@@ -551,77 +538,85 @@ static void draw_view_cal_menu(uint8_t tabIndex, CalTopology topo) {
   }
 
   u8g2.drawHLine(0, 50, 128);
-  u8g2.setFont(psilent10);
-  u8g2.drawStr(2, 61, "ROTATE: SCROLL");
-  u8g2.drawStr(72, 61, "PUSH: SELECT");
+  u8g2.setFont(u8g2_font_4x6_tf);
+  u8g2.drawStr(2, 60, "ROT: SCROLL");
+  u8g2.drawStr(74, 60, "PUSH: SELECT");
 }
 
 static void draw_view_manual_cal(CalTopology topo, uint8_t stage, int32_t gap, int8_t off, uint16_t a440, uint16_t pw) {
   char toastBuf[24];
   screen_cal_format_toast(topo, stage, toastBuf, sizeof(toastBuf));
 
-  u8g2.setFont(psilent12);
-  u8g2.drawStr(2, 10, toastBuf);
-  u8g2.drawHLine(0, 12, 128);
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(2, 9, toastBuf);
+  u8g2.drawHLine(0, 11, 128);
 
+  // Outer frame & center zero line
   u8g2.drawFrame(14, 15, 100, 10);
   u8g2.drawVLine(64, 13, 14);
 
+  // Dynamic limits: ±100 for 440Hz stages, ±400 for all other stages
+  const uint8_t nOsc = screen_cal_nosc(topo);
+  const bool is440 = cal_stage_is_440_n(stage, nOsc);
+  const int32_t limit = is440 ? 100 : 400;
+
   int32_t clampedGap = gap;
-  if (clampedGap < -50) clampedGap = -50;
-  if (clampedGap > 50) clampedGap = 50;
-  uint8_t markerX = 64 + (clampedGap * 46 / 50);
+  if (clampedGap < -limit) clampedGap = -limit;
+  if (clampedGap > limit) clampedGap = limit;
+
+  // Map clamped gap to cursor position within the 100px bar
+  uint8_t markerX = 64 + (clampedGap * 46 / limit);
   u8g2.drawBox(markerX - 2, 17, 5, 6);
 
-  u8g2.setFont(psilent10);
+  u8g2.setFont(u8g2_font_5x7_tf);
   char buf[32];
   snprintf(buf, sizeof(buf), "GAP: %ld", (long)gap);
-  u8g2.drawStr(4, 35, buf);
+  u8g2.drawStr(4, 34, buf);
   snprintf(buf, sizeof(buf), "OFF: %d", off);
-  u8g2.drawStr(70, 35, buf);
+  u8g2.drawStr(70, 34, buf);
   snprintf(buf, sizeof(buf), "440: %u", a440);
-  u8g2.drawStr(4, 46, buf);
+  u8g2.drawStr(4, 45, buf);
   snprintf(buf, sizeof(buf), "PW: %u", pw);
-  u8g2.drawStr(70, 46, buf);
+  u8g2.drawStr(70, 45, buf);
 
   u8g2.drawHLine(0, 49, 128);
   snprintf(buf, sizeof(buf), "STAGE %u / %u", stage + 1, screen_cal_stage_max(topo) + 1);
-  u8g2.drawStr(28, 60, buf);
+  u8g2.drawStr(28, 59, buf);
 }
 
 static void draw_view_save_select(uint8_t pNum, const char* pName) {
-  u8g2.setFont(psilent14);
-  u8g2.drawStr(10, 12, "SAVE PRESET");
+  u8g2.setFont(u8g2_font_7x14B_tf);
+  u8g2.drawStr(8, 12, "SAVE PRESET");
   u8g2.drawHLine(0, 15, 128);
 
-  u8g2.setFont(psilent12);
+  u8g2.setFont(u8g2_font_6x10_tf);
   char buf[24];
   snprintf(buf, sizeof(buf), "Target: P%02u", pNum);
-  u8g2.drawStr(16, 32, buf);
+  u8g2.drawStr(16, 30, buf);
   snprintf(buf, sizeof(buf), "\"%s\"", pName);
-  u8g2.drawStr(16, 46, buf);
+  u8g2.drawStr(16, 44, buf);
 
-  u8g2.setFont(psilent10);
-  u8g2.drawStr(8, 60, "Turn knob to select slot");
+  u8g2.setFont(u8g2_font_5x7_tf);
+  u8g2.drawStr(8, 59, "Turn knob to select slot");
 }
 
 static void draw_view_save_name(const char* pName, uint8_t pChar) {
-  u8g2.setFont(psilent14);
-  u8g2.drawStr(16, 12, "EDIT NAME");
-  u8g2.drawHLine(0, 15, 128);
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(16, 10, "EDIT NAME");
+  u8g2.drawHLine(0, 13, 128);
 
   uint8_t startX = 16;
   uint8_t startY = 34;
   u8g2.drawFrame(12, 22, 104, 18);
 
-  u8g2.setFont(psilent12m);
+  u8g2.setFont(u8g2_font_6x12_tf);
   for (uint8_t i = 0; i < 16; ++i) {
     char c = pName[i] ? pName[i] : ' ';
     char s[2] = { c, '\0' };
     uint8_t charX = startX + (i * 6);
 
     if (pChar == i) {
-      u8g2.drawBox(charX - 1, startY - 8, 7, 10);
+      u8g2.drawBox(charX - 1, startY - 9, 7, 12);
       u8g2.setDrawColor(0);
       u8g2.drawStr(charX, startY, s);
       u8g2.setDrawColor(1);
@@ -630,10 +625,10 @@ static void draw_view_save_name(const char* pName, uint8_t pChar) {
     }
   }
 
-  u8g2.setFont(psilent10);
+  u8g2.setFont(u8g2_font_5x7_tf);
   char posBuf[16];
   snprintf(posBuf, sizeof(posBuf), "Cursor: %u/16", pChar + 1);
-  u8g2.drawStr(36, 56, posBuf);
+  u8g2.drawStr(36, 57, posBuf);
 }
 
 // ---------------------------------------------------------------------------
@@ -646,7 +641,6 @@ void update_u8g2_core0() {
     return;
   }
 
-  // Quick State Check under Lock
   uint8_t pNum;
   char pName[17];
   uint8_t pChar;
@@ -697,14 +691,13 @@ void update_u8g2_core0() {
   pw = calPwCenterDisplay;
   screen_state_unlock();
 
-  // Strict Silent Mode & Dashboard-only check for inspectors
   bool isInspectorActive = (insp != InspectorType::None) && (now - inspTime < inspectorTimeoutMillis) && (mode != ScreenMode::Silent) && (mode == ScreenMode::PresetScroll || mode == ScreenMode::LoadSaveExit);
 
   if (!isInspectorActive) {
     insp = InspectorType::None;
   }
 
-  // Detect all possible parameter and navigation state changes
+  // Detect state change on ANY parameter or navigation update
   if (mode != lastScreenMode || insp != lastOledInspector || inspTime != lastInspTime || pNum != lastPresetNum || pChar != lastPChar || pToastVal != lastToastVal || pToastName != lastToastName || toastActive != lastToastActive || currentCalMenuIndex != lastCalMenuIndex || stage != lastCalStage || gap != lastCalGap || off != lastOff || a440 != lastA440 || pw != lastPw || o1 != lastO1 || o2 != lastO2 || sub != lastSub || a1 != lastA1 || d1 != lastD1 || s1 != lastS1 || r1 != lastR1 || a2 != lastA2 || d2 != lastD2 || s2 != lastS2 || r2 != lastR2) {
     oledDirty = true;
   }
@@ -713,12 +706,10 @@ void update_u8g2_core0() {
     return;
   }
 
-  // Hold previous screen without blacking out during UART preset bursts
   if (mode == ScreenMode::Silent) {
     return;
   }
 
-  // Update ALL tracker variables
   lastScreenMode = mode;
   lastOledInspector = insp;
   lastInspTime = inspTime;
@@ -749,7 +740,6 @@ void update_u8g2_core0() {
 
   u8g2.clearBuffer();
 
-  // Context-Aware Inspector Router
   if (isInspectorActive) {
     switch (insp) {
       case InspectorType::ADSR1:
@@ -787,7 +777,6 @@ void update_u8g2_core0() {
         break;
     }
   } else {
-    // Normal Screen Views
     switch (mode) {
       case ScreenMode::CalibrationMenu:
         draw_view_cal_menu(currentCalMenuIndex, topo);
@@ -807,8 +796,8 @@ void update_u8g2_core0() {
 
       case ScreenMode::SaveCompleted:
         u8g2.drawFrame(10, 10, 108, 44);
-        u8g2.setFont(psilent18);
-        u8g2.drawStr(14, 36, "SAVED!");
+        u8g2.setFont(u8g2_font_9x18B_tf);
+        u8g2.drawStr(28, 37, "SAVED!");
         break;
 
       case ScreenMode::PresetScroll:

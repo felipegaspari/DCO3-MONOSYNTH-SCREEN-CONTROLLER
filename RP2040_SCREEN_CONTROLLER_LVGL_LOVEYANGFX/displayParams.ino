@@ -42,7 +42,113 @@ volatile uint32_t inspectorLastActivityMillis = 0;
 volatile bool inspectorActiveFlag = false;
 
 
+// ---------------------------------------------------------------------------
+// TFT LVGL Manual Calibration Gap Tracking Bar (Parented to Top-Level Screen)
+// ---------------------------------------------------------------------------
+lv_obj_t* ui_calGapTrack  = nullptr;
+static lv_obj_t* ui_calGapCenter = nullptr;
+static lv_obj_t* ui_calGapCursor = nullptr;
 
+static void init_tft_cal_gap_bar(lv_obj_t* screenParent) {
+  if (ui_calGapTrack != nullptr || screenParent == nullptr) return;
+
+  // 1. Full-Width 480x54 px Track Attached to ui_MANUALCALIBRATION Screen
+  ui_calGapTrack = lv_obj_create(screenParent);
+  lv_obj_remove_style_all(ui_calGapTrack);
+  lv_obj_set_size(ui_calGapTrack, 480, 54);
+  lv_obj_align(ui_calGapTrack, LV_ALIGN_BOTTOM_MID, 0, 0); // Flush against LCD bottom edge
+  lv_obj_set_style_bg_color(ui_calGapTrack, lv_color_hex(0x101010), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(ui_calGapTrack, LV_OPA_COVER, LV_PART_MAIN);
+
+  // Orange accent top border
+  lv_obj_set_style_border_color(ui_calGapTrack, lv_color_hex(0xFF7700), LV_PART_MAIN);
+  lv_obj_set_style_border_width(ui_calGapTrack, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_side(ui_calGapTrack, LV_BORDER_SIDE_TOP, LV_PART_MAIN);
+  lv_obj_set_style_radius(ui_calGapTrack, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(ui_calGapTrack, LV_OBJ_FLAG_SCROLLABLE);
+
+  // 2. Fixed Center Zero Marker (Orange)
+  ui_calGapCenter = lv_obj_create(ui_calGapTrack);
+  lv_obj_remove_style_all(ui_calGapCenter);
+  lv_obj_set_size(ui_calGapCenter, 3, 48);
+  lv_obj_align(ui_calGapCenter, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_bg_color(ui_calGapCenter, lv_color_hex(0xFF7700), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(ui_calGapCenter, LV_OPA_COVER, LV_PART_MAIN);
+
+  // 3. Tall Moving Needle / Cursor (12x44 px)
+  ui_calGapCursor = lv_obj_create(ui_calGapTrack);
+  lv_obj_remove_style_all(ui_calGapCursor);
+  lv_obj_set_size(ui_calGapCursor, 12, 44);
+  lv_obj_align(ui_calGapCursor, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0xFF3344), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(ui_calGapCursor, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_radius(ui_calGapCursor, 3, LV_PART_MAIN);
+}
+
+// Lock-Free Calibration UI Draw (Runs on Core 1)
+void drawManualCalibration(const Core1Snapshot &snap) {
+  char str[8];
+  char strLong[12];
+
+  const uint8_t nOsc = screen_cal_nosc(snap.calTopology);
+  const bool is440   = cal_stage_is_440_n(snap.calStage, nOsc);
+
+  if (is440) {
+    itoa((int)snap.calAmp440, str, 10);
+  } else if (cal_stage_is_pw_edit_n(snap.calStage, nOsc)) {
+    itoa((int)snap.calPwCenter, str, 10);
+  } else {
+    itoa(snap.calOffset, str, 10);
+  }
+  lv_label_set_text(ui_calibrationOffset, str);
+  lv_label_set_text(ui_calibrationOffsetShadow, str);
+
+  char oscLabel[4];
+  screen_cal_format_osc(snap.calTopology, snap.calOscN, oscLabel, sizeof(oscLabel));
+  lv_label_set_text(ui_oscillatorN, oscLabel);
+  lv_label_set_text(ui_oscillatorNShadow, oscLabel);
+
+  ltoa(snap.calGap, strLong, 10);
+  lv_label_set_text(ui_calibrationGap, strLong);
+  lv_label_set_text(ui_calibrationGapShadow, strLong);
+
+  const char* waveformText = screen_cal_stage_label(snap.calTopology, snap.calStage);
+  lv_label_set_text(ui_waveform, waveformText);
+  lv_label_set_text(ui_waveformShadow, waveformText);
+
+  // --- Dynamic Gap Tuning Bar Parented Directly to Screen ---
+  if (ui_calGapTrack == nullptr) {
+    init_tft_cal_gap_bar(ui_MANUALCALIBRATION);
+  }
+
+  if (ui_calGapTrack != nullptr) {
+    lv_obj_remove_flag(ui_calGapTrack, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (ui_calGapCursor != nullptr) {
+    const int32_t limit = is440 ? 100 : 400;
+
+    int32_t clampedGap = snap.calGap;
+    if (clampedGap < -limit) clampedGap = -limit;
+    if (clampedGap > limit)  clampedGap = limit;
+
+    // Full 480px width allows ±228px max travel from center
+    const int32_t maxTravel = 228;
+    int32_t xOffset = (clampedGap * maxTravel) / limit;
+
+    lv_obj_align(ui_calGapCursor, LV_ALIGN_CENTER, xOffset, 0);
+
+    // Color-coded needle feedback
+    int32_t absGap = (clampedGap < 0) ? -clampedGap : clampedGap;
+    if (absGap <= 2) {
+      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0x00FF88), LV_PART_MAIN); // Locked Green
+    } else if (absGap < (limit / 4)) {
+      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0xFFCC00), LV_PART_MAIN); // Approaching Yellow
+    } else {
+      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0xFF3344), LV_PART_MAIN); // Far Off Red
+    }
+  }
+}
 // Mixer levels -> bar values (with change check to avoid redundant work)
 static void apply_param_osc1_level(int32_t v) {
   if (OSC1Level != (uint8_t)v) {
@@ -89,12 +195,14 @@ static void apply_param_manual_calibration_flag(int32_t v) {
 
 static void apply_param_manual_calibration_stage(int32_t v) {
   const CalTopology topology = screen_cal_topology();
-  const int32_t stageMax = (int32_t)screen_cal_stage_max(topology);
+  const int32_t stageMax     = (int32_t)screen_cal_stage_max(topology);
   int32_t stage = v;
   if (stage < 0) stage = 0;
   if (stage > stageMax) stage = stageMax;
   manualCalibrationStage = (uint8_t)stage;
-  manualCalibrationOSCN = screen_cal_stage_to_osc(topology, manualCalibrationStage);
+  manualCalibrationOSCN  = screen_cal_stage_to_osc(topology, manualCalibrationStage);
+
+  reset_gap_filter();
 }
 
 static void apply_param_manual_calibration_offset(int32_t v) {
@@ -113,7 +221,16 @@ static void apply_param_cal_pw_center(int32_t v) {
 }
 
 static void apply_param_gap_from_dco(int32_t v) {
-  calibrationGap = (int32_t)v;
+  gapSamples[gapSampleIdx] = v;
+  gapSampleIdx = (gapSampleIdx + 1) & 0x03; // Modulo 4 ring buffer
+  if (gapSampleCount < 4) gapSampleCount++;
+
+  int64_t sum = 0;
+  for (uint8_t i = 0; i < gapSampleCount; ++i) {
+    sum += gapSamples[i];
+  }
+
+  calibrationGap = (int32_t)(sum / gapSampleCount);
 }
 
 static void apply_param_ui_calibration_dismiss(int32_t) {
@@ -193,36 +310,6 @@ void SCREEN_HOT(draw_preset_scroll_1)(ScreenMode mode, uint8_t num, const char* 
     default:
       break;
   }
-}
-
-// Lock-Free Calibration UI Draw
-void drawManualCalibration(const Core1Snapshot& snap) {
-  char str[8];
-  char strLong[12];
-
-  const uint8_t nOsc = screen_cal_nosc(snap.calTopology);
-  if (cal_stage_is_440_n(snap.calStage, nOsc)) {
-    itoa((int)snap.calAmp440, str, 10);
-  } else if (cal_stage_is_pw_edit_n(snap.calStage, nOsc)) {
-    itoa((int)snap.calPwCenter, str, 10);
-  } else {
-    itoa(snap.calOffset, str, 10);
-  }
-  lv_label_set_text(ui_calibrationOffset, str);
-  lv_label_set_text(ui_calibrationOffsetShadow, str);
-
-  char oscLabel[4];
-  screen_cal_format_osc(snap.calTopology, snap.calOscN, oscLabel, sizeof(oscLabel));
-  lv_label_set_text(ui_oscillatorN, oscLabel);
-  lv_label_set_text(ui_oscillatorNShadow, oscLabel);
-
-  ltoa(snap.calGap, strLong, 10);
-  lv_label_set_text(ui_calibrationGap, strLong);
-  lv_label_set_text(ui_calibrationGapShadow, strLong);
-
-  const char* waveformText = screen_cal_stage_label(snap.calTopology, snap.calStage);
-  lv_label_set_text(ui_waveform, waveformText);
-  lv_label_set_text(ui_waveformShadow, waveformText);
 }
 
 static void applyParamToModelAndSignals() {
