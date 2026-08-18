@@ -1,8 +1,8 @@
 #include "params_def.h"
 #include "param_router.h"
+#include "sram_hot.h"
 
-// Definitions for display/model shared state (extern declarations in
-// displayParams.h).
+// Definitions for display/model shared state
 uint16_t paramHideTimeMillis = 3000;
 bool     paramChangeTimerFlag = false;
 
@@ -13,8 +13,6 @@ volatile uint8_t  manualCalibrationOSCN = 0;
 volatile uint8_t  manualCalibrationStage = 0;
 volatile int32_t  calibrationGap = 0;
 
-// Which synth this screen is attached to; set from PARAM_UI_VOICE_TOPOLOGY
-// (Serial.ino) until the Input's first announcement arrives.
 volatile CalTopology screenCalTopology = SCREEN_CAL_TOPOLOGY_DEFAULT;
 
 volatile uint8_t  OSC1Level = 0;
@@ -32,73 +30,58 @@ volatile uint16_t ADSR2Decay = 0;
 volatile uint16_t ADSR2Sustain = 0;
 volatile uint16_t ADSR2Release = 0;
 
-// Type alias for the screen's parameter router value type.
-// NOTE: avoid SCREEN_HOT(using this alias in function parameter lists because the Arduino
-// build system generates prototypes before these typedefs.
 using ScreenParamValueT = int32_t;
 using ScreenParamDescriptor = ParamDescriptorT<ScreenParamValueT>;
 
-// ---------------------------------------------------------------------------
-// Router-backed "apply" functions for parameters that affect the internal
-// model state or screen signals (separate from the user-facing text).
-// ---------------------------------------------------------------------------
-
-// Mixer levels -> bar values (bitmask so simultaneous updates aren't lost)
-static void SCREEN_HOT(apply_param_osc1_level)(int32_t v) {
-  OSC1Level     = (uint8_t)v;
-  levelBarFlag |= LEVEL_BAR_OSC1;
+// Mixer levels -> bar values (with change check to avoid redundant work)
+static void apply_param_osc1_level(int32_t v) {
+  if (OSC1Level != (uint8_t)v) {
+    OSC1Level     = (uint8_t)v;
+    levelBarFlag |= LEVEL_BAR_OSC1;
+  }
 }
 
-static void SCREEN_HOT(apply_param_osc2_level)(int32_t v) {
-  OSC2Level     = (uint8_t)v;
-  levelBarFlag |= LEVEL_BAR_OSC2;
+static void apply_param_osc2_level(int32_t v) {
+  if (OSC2Level != (uint8_t)v) {
+    OSC2Level     = (uint8_t)v;
+    levelBarFlag |= LEVEL_BAR_OSC2;
+  }
 }
 
-static void SCREEN_HOT(apply_param_osc3_level)(int32_t v) {
-  OSC3Level    = (uint8_t)v;
-  // No dedicated OSC3 bar widget yet — toast still updates via draw_param_1.
+static void apply_param_osc3_level(int32_t v) {
+  OSC3Level = (uint8_t)v;
 }
 
-static void SCREEN_HOT(apply_param_sub_level)(int32_t v) {
-  SUBLevel      = (uint8_t)v;
-  levelBarFlag |= LEVEL_BAR_SUB;
+static void apply_param_sub_level(int32_t v) {
+  if (SUBLevel != (uint8_t)v) {
+    SUBLevel      = (uint8_t)v;
+    levelBarFlag |= LEVEL_BAR_SUB;
+  }
 }
 
-// Calibration flags / screen navigation
 static void apply_param_calibration_flag(int32_t v) {
   switch (v) {
-    case 0:
-      serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
-      break;
-    case 1:
-      serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
-      break;
-    default:
-      return;
+    case 0: serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit); break;
+    case 1: serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu); break;
+    default: return;
   }
   signalFlag = true;
 }
 
 static void apply_param_manual_calibration_flag(int32_t v) {
   switch (v) {
-    case 1:
-      serialSignal = screen_mode_raw(ScreenMode::ManualCalibration);
-      break;
-    case 0:
-      serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
-      break;
-    default:
-      return;
+    case 1: serialSignal = screen_mode_raw(ScreenMode::ManualCalibration); break;
+    case 0: serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu); break;
+    default: return;
   }
   signalFlag = true;
 }
 
 static void apply_param_manual_calibration_stage(int32_t v) {
   const CalTopology topology = screen_cal_topology();
-  const int32_t     stageMax = (int32_t)screen_cal_stage_max(topology);
-
+  const int32_t stageMax     = (int32_t)screen_cal_stage_max(topology);
   int32_t stage = v;
-  if (stage < 0)        stage = 0;
+  if (stage < 0) stage = 0;
   if (stage > stageMax) stage = stageMax;
   manualCalibrationStage = (uint8_t)stage;
   manualCalibrationOSCN  = screen_cal_stage_to_osc(topology, manualCalibrationStage);
@@ -124,7 +107,6 @@ static void apply_param_gap_from_dco(int32_t v) {
 }
 
 static void apply_param_ui_calibration_dismiss(int32_t) {
-  // EXIT CURRENT MENU
   if (serialSignal == screen_mode_raw(ScreenMode::CalibrationMenu)) {
     serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
     signalFlag   = true;
@@ -132,12 +114,10 @@ static void apply_param_ui_calibration_dismiss(int32_t) {
 }
 
 static void apply_param_ui_calibration_menu_mode(int32_t) {
-  // CALIBRATION MENU
   serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
   signalFlag   = true;
 }
 
-// Parameter descriptor table for the screen controller.
 static const ScreenParamDescriptor screenParamTable[] = {
   { ParamId::PARAM_OSC1_LEVEL,                     apply_param_osc1_level                       },
   { ParamId::PARAM_OSC2_LEVEL,                     apply_param_osc2_level                       },
@@ -154,23 +134,14 @@ static const ScreenParamDescriptor screenParamTable[] = {
   { ParamId::PARAM_UI_CALIBRATION_MENU_MODE,       apply_param_ui_calibration_menu_mode         },
 };
 
-static const size_t screenParamTableSize =
-  sizeof(screenParamTable) / sizeof(screenParamTable[0]);
+static const size_t screenParamTableSize = sizeof(screenParamTable) / sizeof(screenParamTable[0]);
 
-// Show param name/value toast on the bottom message panel. Core1 only.
-void SCREEN_HOT(draw_param_1)() {
-
+// Lock-Free Parameter Toast Draw
+void draw_param_1(const char* name, int32_t value) {
   paramChangeLastMillis = millis();
-  paramChangeTimerFlag = true;
+  paramChangeTimerFlag  = true;
 
-  const char* name;
-  int32_t value;
-  screen_state_lock();
-  name  = paramName;
-  value = paramValue;
-  screen_state_unlock();
-
-  char str[12];  // int32 worst case: "-2147483648" + '\0'
+  char str[12];
   itoa(value, str, 10);
   lv_label_set_text(ui_CommandMessage, name);
   lv_label_set_text(ui_CommandMessageShadow, name);
@@ -180,17 +151,8 @@ void SCREEN_HOT(draw_param_1)() {
   lv_obj_remove_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
 }
 
-void SCREEN_HOT(draw_preset_scroll_1)(ScreenMode mode) {
-
-  char name[17];
-  byte num;
-  uint8_t charPos;
-  screen_state_lock();
-  num     = presetNumber;
-  charPos = presetChar;
-  snapshot_preset_name(name);
-  screen_state_unlock();
-
+// Lock-Free Preset Scroll Draw
+void SCREEN_HOT(draw_preset_scroll_1)(ScreenMode mode, uint8_t num, const char* name, uint8_t charPos) {
   char str[12];
   itoa(num, str, 10);
   switch (mode) {
@@ -217,59 +179,37 @@ void SCREEN_HOT(draw_preset_scroll_1)(ScreenMode mode) {
   }
 }
 
-// Refresh manual-calibration labels (offset, OSC index, gap) on the cal panel.
-// Core1 only.
-void SCREEN_HOT(drawManualCalibration)() {
-  int8_t      offsetNow;
-  uint16_t    amp440;
-  uint16_t    pwCenter;
-  uint8_t     oscN;
-  uint8_t     stage;
-  int32_t     gap;
-  CalTopology topology;
-  screen_state_lock();
-  offsetNow = offset;
-  amp440    = ampComp440Display;
-  pwCenter  = calPwCenterDisplay;
-  oscN      = manualCalibrationOSCN;
-  stage     = manualCalibrationStage;
-  gap       = calibrationGap;
-  topology  = screenCalTopology;
-  screen_state_unlock();
+// Lock-Free Calibration UI Draw
+void drawManualCalibration(const Core1Snapshot &snap) {
+  char str[8];
+  char strLong[12];
 
-  char str[8];       // int8 worst case: "-128" + '\0'; amp 440 fits too
-  char strLong[12];  // int32 worst case: "-2147483648" + '\0'
-
-  const uint8_t nOsc = screen_cal_nosc(topology);
-  if (cal_stage_is_440_n(stage, nOsc)) {
-    itoa((int)amp440, str, 10);
-  } else if (cal_stage_is_pw_edit_n(stage, nOsc)) {
-    itoa((int)pwCenter, str, 10);
+  const uint8_t nOsc = screen_cal_nosc(snap.calTopology);
+  if (cal_stage_is_440_n(snap.calStage, nOsc)) {
+    itoa((int)snap.calAmp440, str, 10);
+  } else if (cal_stage_is_pw_edit_n(snap.calStage, nOsc)) {
+    itoa((int)snap.calPwCenter, str, 10);
   } else {
-    itoa(offsetNow, str, 10);
+    itoa(snap.calOffset, str, 10);
   }
   lv_label_set_text(ui_calibrationOffset, str);
   lv_label_set_text(ui_calibrationOffsetShadow, str);
 
   char oscLabel[4];
-  screen_cal_format_osc(topology, oscN, oscLabel, sizeof(oscLabel));
+  screen_cal_format_osc(snap.calTopology, snap.calOscN, oscLabel, sizeof(oscLabel));
   lv_label_set_text(ui_oscillatorN, oscLabel);
   lv_label_set_text(ui_oscillatorNShadow, oscLabel);
 
-  ltoa(gap, strLong, 10);
+  ltoa(snap.calGap, strLong, 10);
   lv_label_set_text(ui_calibrationGap, strLong);
   lv_label_set_text(ui_calibrationGapShadow, strLong);
 
-  const char* waveformText = screen_cal_stage_label(topology, stage);
+  const char* waveformText = screen_cal_stage_label(snap.calTopology, snap.calStage);
   lv_label_set_text(ui_waveform, waveformText);
   lv_label_set_text(ui_waveformShadow, waveformText);
 }
 
-// Apply parameter effects to the internal "model" state (levels, calibration,
-// screen signals, etc.) via the shared param_router table above. This is kept
-// separate from the user-facing text so setDisplayParam() is easier to reason
-// about.
-static void SCREEN_HOT(applyParamToModelAndSignals)() {
+static void applyParamToModelAndSignals() {
   param_router_apply<ScreenParamValueT>(
     screenParamTable,
     screenParamTableSize,
@@ -278,9 +218,7 @@ static void SCREEN_HOT(applyParamToModelAndSignals)() {
   );
 }
 
-// Router entry point for the 'y' nav path (Serial.ino). Caller must hold
-// screen_state_lock().
-void SCREEN_HOT(applyNavParam)(uint8_t id, int32_t value) {
+void applyNavParam(uint8_t id, int32_t value) {
   param_router_apply<ScreenParamValueT>(
     screenParamTable,
     screenParamTableSize,
@@ -289,396 +227,138 @@ void SCREEN_HOT(applyNavParam)(uint8_t id, int32_t value) {
   );
 }
 
-// Map paramNumber to label text + apply model side-effects. Runs on Core0
-// with screen_state_lock() held (called from the serial param handlers).
-void  setDisplayParam() {
-  // First update internal model / screen state.
-  applyParamToModelAndSignals();
+void setDisplayParam() {
   applyParamToModelAndSignals();
 
-  paramName = ""; // <--- ADD THIS: clear stale string
+  paramName = ""; // Clear stale string
 
   switch (static_cast<ParamId>(paramNumber)) {
-    case ParamId::PARAM_OSC1_SAW_ENABLE:
-      paramName = (paramValue != 0) ? " OSC1 SAW ON" : " OSC1 SAW OFF";
-      break;
-    case ParamId::PARAM_OSC1_PULSE_ENABLE:
-      paramName = (paramValue != 0) ? " OSC1 PULSE ON" : " OSC1 PULSE OFF";
-      break;
-    case ParamId::PARAM_OSC1_TRI_ENABLE:
-      paramName = (paramValue != 0) ? " OSC1 TRI ON" : " OSC1 TRI OFF";
-      break;
-    case ParamId::PARAM_OSC2_SAW_ENABLE:
-      paramName = (paramValue != 0) ? " OSC2 SAW ON" : " OSC2 SAW OFF";
-      break;
-    case ParamId::PARAM_OSC2_PULSE_ENABLE:
-      paramName = (paramValue != 0) ? " OSC2 PULSE ON" : " OSC2 PULSE OFF";
-      break;
-    case ParamId::PARAM_OSC2_TRI_ENABLE:
-      paramName = (paramValue != 0) ? " OSC2 TRI ON" : " OSC2 TRI OFF";
-      break;
-    case ParamId::PARAM_OSC3_SAW_ENABLE:
-      paramName = (paramValue != 0) ? " OSC3 SAW ON" : " OSC3 SAW OFF";
-      break;
-    case ParamId::PARAM_OSC3_PULSE_ENABLE:
-      paramName = (paramValue != 0) ? " OSC3 PULSE ON" : " OSC3 PULSE OFF";
-      break;
-    case ParamId::PARAM_OSC3_TRI_ENABLE:
-      paramName = (paramValue != 0) ? " OSC3 TRI ON" : " OSC3 TRI OFF";
-      break;
-    case ParamId::PARAM_SINE_STATUS:
-      paramName = " SINE (unused)";
-      break;
-    case ParamId::PARAM_RESONANCE_COMPENSATION:
-      paramName = " ResoAmpComp";
-      break;
-    case ParamId::PARAM_VCA_ADSR_RESTART:
-      paramName = " ADSR1 Restart";
-      break;
-    case ParamId::PARAM_VCF_ADSR_RESTART:
-      paramName = " ADSR2 Restart";
-      break;
-    case ParamId::PARAM_ADSR3_TO_OSC_SELECT:
-      paramName = screen_adsr3_osc_select_label(screen_cal_topology(), paramValue);
-      break;
-    case ParamId::PARAM_LFO1_WAVEFORM:
-      paramName = " LFO1 Shape";
-      break;
-    case ParamId::PARAM_LFO2_WAVEFORM:
-      paramName = " LFO2 Shape";
-      break;
-    case ParamId::PARAM_OSC1_INTERVAL:
-      paramName = " Octave";
-      paramValue = (paramValue - 36) / 12;
-      break;
-    case ParamId::PARAM_OSC2_INTERVAL:
-      paramName = " OSC2 Interval";
-      paramValue -= 36;
-      break;
-    case ParamId::PARAM_OSC2_DETUNE_VAL:
-      paramName = " OSC2 Detune";
-      paramValue -= 256;
-      break;
-    case ParamId::PARAM_LFO2_TO_OSC2:
-      paramName = " LFO2->OSC2 Pitch";
-      break;
-    case ParamId::PARAM_OSC3_INTERVAL:
-      paramName = " OSC3 Interval";
-      paramValue -= 36;
-      break;
-    case ParamId::PARAM_OSC3_DETUNE_VAL:
-      paramName = " OSC3 Detune";
-      paramValue -= 256;
-      break;
-    case ParamId::PARAM_LFO2_TO_OSC3:
-      paramName = " LFO2->OSC3 Pitch";
-      break;
-    case ParamId::PARAM_OSC_SYNC_MODE:
-      paramName = " OscPhaseSync";
-      break;
-    case ParamId::PARAM_PORTAMENTO_TIME:
-      paramName = " Portamento";
-      break;
-    case ParamId::PARAM_VCF_KEYTRACK:
-      paramName = " VCF Keytrack";
-      break;
-    // 191-194: the filter pots are analog, so these ids exist only so a filter
-    // change the panel did not make (dco_control, MIDI CC, preset recall) still
-    // shows up here. Input sends them instead of relaying the 'd' block.
-    case ParamId::PARAM_UI_CUTOFF:
-      paramName = " Cutoff";
-      break;
-    case ParamId::PARAM_UI_RESONANCE:
-      paramName = " Resonance";
-      break;
-    case ParamId::PARAM_UI_ADSR2_TO_VCF:
-      paramName = " ADSR2 -> VCF";
-      break;
-    case ParamId::PARAM_UI_LFO2_TO_VCF:
-      paramName = " LFO2 -> VCF";
-      break;
-    case ParamId::PARAM_VELOCITY_TO_VCF:
-      paramName = " Velocity -> VCF";
-      break;
-    case ParamId::PARAM_VELOCITY_TO_VCA:
-      paramName = " Velocity -> VCA";
-      break;
-    case ParamId::PARAM_OSC1_LEVEL:
-      paramName = " OSC1 Level";
-      break;
-    case ParamId::PARAM_OSC2_LEVEL:
-      paramName = " OSC2 Level";
-      break;
-    case ParamId::PARAM_OSC3_LEVEL:
-      paramName = " OSC3 Level";
-      break;
-    case ParamId::PARAM_SUB_LEVEL:
-      paramName = " SUB Level";
-      break;
-    case ParamId::PARAM_CALIBRATION_VALUE:
-      paramName = " CALIBRATION VAL";
-      break;
+    // --- Oscillator Enables ---
+    case ParamId::PARAM_OSC1_SAW_ENABLE:      paramName = (paramValue != 0) ? " OSC1 SAW ON" : " OSC1 SAW OFF"; break;
+    case ParamId::PARAM_OSC1_PULSE_ENABLE:    paramName = (paramValue != 0) ? " OSC1 PULSE ON" : " OSC1 PULSE OFF"; break;
+    case ParamId::PARAM_OSC1_TRI_ENABLE:      paramName = (paramValue != 0) ? " OSC1 TRI ON" : " OSC1 TRI OFF"; break;
+    case ParamId::PARAM_OSC2_SAW_ENABLE:      paramName = (paramValue != 0) ? " OSC2 SAW ON" : " OSC2 SAW OFF"; break;
+    case ParamId::PARAM_OSC2_PULSE_ENABLE:    paramName = (paramValue != 0) ? " OSC2 PULSE ON" : " OSC2 PULSE OFF"; break;
+    case ParamId::PARAM_OSC2_TRI_ENABLE:      paramName = (paramValue != 0) ? " OSC2 TRI ON" : " OSC2 TRI OFF"; break;
+    case ParamId::PARAM_OSC3_SAW_ENABLE:      paramName = (paramValue != 0) ? " OSC3 SAW ON" : " OSC3 SAW OFF"; break;
+    case ParamId::PARAM_OSC3_PULSE_ENABLE:    paramName = (paramValue != 0) ? " OSC3 PULSE ON" : " OSC3 PULSE OFF"; break;
+    case ParamId::PARAM_OSC3_TRI_ENABLE:      paramName = (paramValue != 0) ? " OSC3 TRI ON" : " OSC3 TRI OFF"; break;
+    case ParamId::PARAM_SINE_STATUS:          paramName = " SINE (unused)"; break;
+    case ParamId::PARAM_RESONANCE_COMPENSATION: paramName = " ResoAmpComp"; break;
+    case ParamId::PARAM_VCA_ADSR_RESTART:     paramName = " ADSR1 Restart"; break;
+    case ParamId::PARAM_VCF_ADSR_RESTART:     paramName = " ADSR2 Restart"; break;
+    case ParamId::PARAM_ADSR3_TO_OSC_SELECT:  paramName = screen_adsr3_osc_select_label(screen_cal_topology(), paramValue); break;
+    case ParamId::PARAM_LFO1_WAVEFORM:        paramName = " LFO1 Shape"; break;
+    case ParamId::PARAM_LFO2_WAVEFORM:        paramName = " LFO2 Shape"; break;
+    
+    // --- Intervals & Detune ---
+    case ParamId::PARAM_OSC1_INTERVAL:        paramName = " Octave"; paramValue = (paramValue - 36) / 12; break;
+    case ParamId::PARAM_OSC2_INTERVAL:        paramName = " OSC2 Interval"; paramValue -= 36; break;
+    case ParamId::PARAM_OSC2_DETUNE_VAL:      paramName = " OSC2 Detune"; paramValue -= 256; break;
+    case ParamId::PARAM_LFO2_TO_OSC2:         paramName = " LFO2->OSC2 Pitch"; break;
+    case ParamId::PARAM_OSC3_INTERVAL:        paramName = " OSC3 Interval"; paramValue -= 36; break;
+    case ParamId::PARAM_OSC3_DETUNE_VAL:      paramName = " OSC3 Detune"; paramValue -= 256; break;
+    case ParamId::PARAM_LFO2_TO_OSC3:         paramName = " LFO2->OSC3 Pitch"; break;
+    case ParamId::PARAM_OSC_SYNC_MODE:        paramName = " OscPhaseSync"; break;
+    case ParamId::PARAM_PORTAMENTO_TIME:      paramName = " Portamento"; break;
+    case ParamId::PARAM_VCF_KEYTRACK:         paramName = " VCF Keytrack"; break;
+    case ParamId::PARAM_UI_CUTOFF:            paramName = " Cutoff"; break;
+    case ParamId::PARAM_UI_RESONANCE:         paramName = " Resonance"; break;
+    case ParamId::PARAM_UI_ADSR2_TO_VCF:      paramName = " ADSR2 -> VCF"; break;
+    case ParamId::PARAM_UI_LFO2_TO_VCF:       paramName = " LFO2 -> VCF"; break;
+    case ParamId::PARAM_VELOCITY_TO_VCF:      paramName = " Velocity -> VCF"; break;
+    case ParamId::PARAM_VELOCITY_TO_VCA:      paramName = " Velocity -> VCA"; break;
+    case ParamId::PARAM_OSC1_LEVEL:           paramName = " OSC1 Level"; break;
+    case ParamId::PARAM_OSC2_LEVEL:           paramName = " OSC2 Level"; break;
+    case ParamId::PARAM_OSC3_LEVEL:           paramName = " OSC3 Level"; break;
+    case ParamId::PARAM_SUB_LEVEL:            paramName = " SUB Level"; break;
+    case ParamId::PARAM_CALIBRATION_VALUE:    paramName = " CALIBRATION VAL"; break;
+
+    // --- Voice Mode & Alloc ---
     case ParamId::PARAM_VOICE_MODE:
       switch (paramValue) {
-        case 0:
-          paramName = " MONO";
-          break;
-        case 1:
-          paramName = " POLY";
-          break;
-        case 2:
-          paramName = " UNISON";
-          break;
-        default:
-          break;
+        case 0: paramName = " MONO"; break;
+        case 1: paramName = " POLY"; break;
+        case 2: paramName = " UNISON"; break;
+        default: break;
       }
       break;
-    // Poly steal policy / mono note priority; the two names per value are
-    // "what poly does / what mono does".
     case ParamId::PARAM_VOICE_ALLOC_MODE:
       switch (paramValue) {
-        case 0:
-          paramName = " ROUND ROBIN / LAST";
-          break;
-        case 1:
-          paramName = " OLDEST / FIRST";
-          break;
-        case 2:
-          paramName = " QUIETEST / LAST";
-          break;
-        case 3:
-          paramName = " QUIETEST KEEP LOW / LOW";
-          break;
-        case 4:
-          paramName = " QUIETEST KEEP HIGH / HIGH";
-          break;
-        case 5:
-          paramName = " NO STEAL / FIRST";
-          break;
-        default:
-          break;
+        case 0: paramName = " ROUND ROBIN / LAST"; break;
+        case 1: paramName = " OLDEST / FIRST"; break;
+        case 2: paramName = " QUIETEST / LAST"; break;
+        case 3: paramName = " QUIETEST KEEP LOW / LOW"; break;
+        case 4: paramName = " QUIETEST KEEP HIGH / HIGH"; break;
+        case 5: paramName = " NO STEAL / FIRST"; break;
+        default: break;
       }
-      break;
-    case ParamId::PARAM_UNISON_DETUNE:
-      paramName = " Analog Detune";
-      break;
-    case ParamId::PARAM_ANALOG_DRIFT_AMOUNT:
-      paramName = " Analog Drift";
-      break;
-    case ParamId::PARAM_ANALOG_DRIFT_SPEED:
-      paramName = " Analog Drift Speed";
-      break;
-    case ParamId::PARAM_ANALOG_DRIFT_SPREAD:
-      paramName = " Analog Drift Spread";
-      break;
-    case ParamId::PARAM_SYNC_MODE:
-      paramName = " Sync Mode";
       break;
 
-    case ParamId::PARAM_LFO1_TO_DCO:
-      paramName = " LFO1 -> Pitch";
-      break;
-    case ParamId::PARAM_LFO1_SPEED:
-      paramName = " LFO1 Speed";
-      break;
-    case ParamId::PARAM_LFO2_SPEED:
-      paramName = " LFO2 Speed";
-      break;
-    case ParamId::PARAM_VCA_LEVEL:
-      paramName = " VCA -> LEVEL";
-      break;
-    case ParamId::PARAM_LFO1_TO_VCA:
-      paramName = " LFO1 -> VCA";
-      break;
-    case ParamId::PARAM_LFO2_TO_PW:
-      paramName = " LFO2 -> PWM";
-      break;
-    case ParamId::PARAM_ADSR3_TO_PWM:
-      paramName = " ADSR3 -> PWM";
-      paramValue -= 512;
-      break;
-    case ParamId::PARAM_ADSR3_TO_DETUNE1:
-      paramName = " ADSR3 -> Pitch";
-      break;
+    case ParamId::PARAM_UNISON_DETUNE:        paramName = " Analog Detune"; break;
+    case ParamId::PARAM_ANALOG_DRIFT_AMOUNT:  paramName = " Analog Drift"; break;
+    case ParamId::PARAM_ANALOG_DRIFT_SPEED:   paramName = " Analog Drift Speed"; break;
+    case ParamId::PARAM_ANALOG_DRIFT_SPREAD:  paramName = " Analog Drift Spread"; break;
+    case ParamId::PARAM_SYNC_MODE:            paramName = " Sync Mode"; break;
+    case ParamId::PARAM_LFO1_TO_DCO:          paramName = " LFO1 -> Pitch"; break;
+    case ParamId::PARAM_LFO1_SPEED:           paramName = " LFO1 Speed"; break;
+    case ParamId::PARAM_LFO2_SPEED:           paramName = " LFO2 Speed"; break;
+    case ParamId::PARAM_VCA_LEVEL:            paramName = " VCA -> LEVEL"; break;
+    case ParamId::PARAM_LFO1_TO_VCA:          paramName = " LFO1 -> VCA"; break;
+    case ParamId::PARAM_LFO2_TO_PW:           paramName = " LFO2 -> PWM"; break;
+    case ParamId::PARAM_ADSR3_TO_PWM:         paramName = " ADSR3 -> PWM"; paramValue -= 512; break;
+    case ParamId::PARAM_ADSR3_TO_DETUNE1:     paramName = " ADSR3 -> Pitch"; break;
+
+    // --- Curves ---
     case ParamId::PARAM_ADSR1_ATTACK_CURVE:
-      switch (paramValue) {
-        case 0:
-          paramName = " EXP";
-          break;
-        case 1:
-          paramName = " SOFT";
-          break;
-        case 2:
-          paramName = " STEEP";
-          break;
-        case 3:
-          paramName = " CONCAVE";
-          break;
-        case 4:
-          paramName = " FAST S";
-          break;
-        case 5:
-          paramName = " SLOW THEN LIN";
-          break;
-        case 6:
-          paramName = " ALMOST LIN";
-          break;
-        case 7:
-          paramName = " LINEAR";
-          break;
-        case 100:
-          paramName = " ADSR1 Curves";
-          break;
-        default:
-          break;
-      }
-      break;
-    case ParamId::PARAM_ADSR1_DECAY_CURVE:
-      switch (paramValue) {
-        case 0:
-          paramName = " EXP";
-          break;
-        case 1:
-          paramName = " SOFT";
-          break;
-        case 2:
-          paramName = " STEEP";
-          break;
-        case 3:
-          paramName = " CONVEX";
-          break;
-        case 4:
-          paramName = " FAST START S";
-          break;
-        case 5:
-          paramName = " SLOW THEN LIN";
-          break;
-        case 6:
-          paramName = " FAST THEN LIN";
-          break;
-        case 7:
-          paramName = " ALMOST LIN";
-          break;
-        case 8:
-          paramName = " LINEAR";
-          break;
-        case 100:
-          paramName = " ADSR1 Decay";
-          break;
-        default:
-          break;
-      }
-      break;
     case ParamId::PARAM_ADSR2_ATTACK_CURVE:
       switch (paramValue) {
-        case 0:
-          paramName = " EXP";
-          break;
-        case 1:
-          paramName = " SOFT";
-          break;
-        case 2:
-          paramName = " STEEP";
-          break;
-        case 3:
-          paramName = " CONCAVE";
-          break;
-        case 4:
-          paramName = " FAST S";
-          break;
-        case 5:
-          paramName = " SLOW THEN LIN";
-          break;
-        case 6:
-          paramName = " ALMOST LIN";
-          break;
-        case 7:
-          paramName = " LINEAR";
-          break;
-        case 100:
-          paramName = " ADSR2 Curves";
-          break;
-        default:
-          break;
+        case 0: paramName = " EXP"; break;
+        case 1: paramName = " SOFT"; break;
+        case 2: paramName = " STEEP"; break;
+        case 3: paramName = " CONCAVE"; break;
+        case 4: paramName = " FAST S"; break;
+        case 5: paramName = " SLOW THEN LIN"; break;
+        case 6: paramName = " ALMOST LIN"; break;
+        case 7: paramName = " LINEAR"; break;
+        case 100: paramName = (paramNumber == static_cast<uint8_t>(ParamId::PARAM_ADSR1_ATTACK_CURVE)) ? " ADSR1 Curves" : " ADSR2 Curves"; break;
+        default: break;
       }
       break;
+
+    case ParamId::PARAM_ADSR1_DECAY_CURVE:
     case ParamId::PARAM_ADSR2_DECAY_CURVE:
       switch (paramValue) {
-        case 0:
-          paramName = " EXP";
-          break;
-        case 1:
-          paramName = " SOFT";
-          break;
-        case 2:
-          paramName = " STEEP";
-          break;
-        case 3:
-          paramName = " CONVEX";
-          break;
-        case 4:
-          paramName = " FAST START S";
-          break;
-        case 5:
-          paramName = " SLOW THEN LIN";
-          break;
-        case 6:
-          paramName = " FAST THEN LIN";
-          break;
-        case 7:
-          paramName = " ALMOST LIN";
-          break;
-        case 8:
-          paramName = " LINEAR";
-          break;
-        case 100:
-          paramName = " ADSR2 Decay";
-          break;
-        default:
-          break;
+        case 0: paramName = " EXP"; break;
+        case 1: paramName = " SOFT"; break;
+        case 2: paramName = " STEEP"; break;
+        case 3: paramName = " CONVEX"; break;
+        case 4: paramName = " FAST START S"; break;
+        case 5: paramName = " SLOW THEN LIN"; break;
+        case 6: paramName = " FAST THEN LIN"; break;
+        case 7: paramName = " ALMOST LIN"; break;
+        case 8: paramName = " LINEAR"; break;
+        case 100: paramName = (paramNumber == static_cast<uint8_t>(ParamId::PARAM_ADSR1_DECAY_CURVE)) ? " ADSR1 Decay" : " ADSR2 Decay"; break;
+        default: break;
       }
       break;
 
-    case ParamId::PARAM_FADERS_CONTROL_MANUAL:
-      paramName = " MAN FADERS";
-      break;
-    case ParamId::PARAM_FADER_ROW1_CONTROL_MANUAL:
-      paramName = " MAN FADERS 1";
-      break;
-    case ParamId::PARAM_FADER_ROW2_CONTROL_MANUAL:
-      paramName = " MAN FADERS 2";
-      break;
-    case ParamId::PARAM_VCF_POTS_CONTROL_MANUAL:
-      paramName = " MANUAL VCF";
-      break;
-    case ParamId::PARAM_PWM_POTS_CONTROL_MANUAL:
-      paramName = " MANUAL PWM";
-      break;
-    case ParamId::PARAM_ALL_CONTROLS_MANUAL:
-      paramName = " ALL CONTROLS MANUAL";
-      break;
-    case ParamId::PARAM_ADSR3_ENABLED:
-      paramName = " ADSR3 ENABLED";
-      break;
-    case ParamId::PARAM_FUNCTION_KEY:
-      paramName = " FUNCTION KEY";
-      break;
-    case ParamId::PARAM_VCA_POTS_CONTROL_MANUAL:
-      paramName = " MANUAL VCA";
-      break;
-    case ParamId::PARAM_POTS_CONTROL_MANUAL:
-      paramName = " MANUAL POTS";
-      break;
+    // --- Manual / Hardware Function Keys (RESTORED) ---
+    case ParamId::PARAM_FUNCTION_KEY:             paramName = " FUNCTION KEY"; break;
+    case ParamId::PARAM_FADERS_CONTROL_MANUAL:     paramName = " MAN FADERS"; break;
+    case ParamId::PARAM_FADER_ROW1_CONTROL_MANUAL: paramName = " MAN FADERS 1"; break;
+    case ParamId::PARAM_FADER_ROW2_CONTROL_MANUAL: paramName = " MAN FADERS 2"; break;
+    case ParamId::PARAM_VCF_POTS_CONTROL_MANUAL:   paramName = " MANUAL VCF"; break;
+    case ParamId::PARAM_PWM_POTS_CONTROL_MANUAL:   paramName = " MANUAL PWM"; break;
+    case ParamId::PARAM_VCA_POTS_CONTROL_MANUAL:   paramName = " MANUAL VCA"; break;
+    case ParamId::PARAM_POTS_CONTROL_MANUAL:       paramName = " MANUAL POTS"; break;
+    case ParamId::PARAM_ALL_CONTROLS_MANUAL:       paramName = " ALL CONTROLS MANUAL"; break;
+    case ParamId::PARAM_ADSR3_ENABLED:             paramName = " ADSR3 ENABLED"; break;
 
-
-
-    case ParamId::PARAM_CALIBRATION_FLAG:
-      paramName = " AUTO CALIBRATION";
-      break;
-    case ParamId::PARAM_MANUAL_CALIBRATION_FLAG:
-      paramName = " MANUAL CALIBRATION";
-      break;
-    case ParamId::PARAM_MANUAL_CALIBRATION_STAGE: {  // osc + wave, not raw stage
+    // --- Calibration Menu & Stage Names (RESTORED) ---
+    case ParamId::PARAM_CALIBRATION_FLAG:          paramName = " AUTO CALIBRATION"; break;
+    case ParamId::PARAM_MANUAL_CALIBRATION_FLAG:   paramName = " MANUAL CALIBRATION"; break;
+    case ParamId::PARAM_MANUAL_CALIBRATION_STAGE: {
       static char calStageToast[20];
       const uint8_t stageNow = (uint8_t)paramValue;
       screen_cal_format_toast(screen_cal_topology(), stageNow, calStageToast, sizeof(calStageToast));
@@ -695,182 +375,28 @@ void  setDisplayParam() {
       }
       break;
     }
-    case ParamId::PARAM_MANUAL_CALIBRATION_OFFSET:  // manual calibration offset
-      paramName = " OFFSET";
-      break;
-    case ParamId::PARAM_AMP_COMP_440:
-      paramName = " AMP";
-      break;
-    case ParamId::PARAM_CAL_PW_CENTER:
-      paramName = " PW";
-      break;
-    case ParamId::PARAM_GAP_FROM_DCO:  // manual calibration GAP
-      paramName = " GAP";
-      break;
+    case ParamId::PARAM_MANUAL_CALIBRATION_OFFSET: paramName = " OFFSET"; break;
+    case ParamId::PARAM_AMP_COMP_440:              paramName = " AMP"; break;
+    case ParamId::PARAM_CAL_PW_CENTER:             paramName = " PW"; break;
+    case ParamId::PARAM_GAP_FROM_DCO:              paramName = " GAP"; break;
 
-    case ParamId::PARAM_UI_MENU_POSITION:  // MENU POSITION
-      break;
-
-    case ParamId::PARAM_UI_CALIBRATION_DISMISS:  // EXIT CURRENT MENU (handled in applyParamToModelAndSignals)
-      break;
-
-    case ParamId::PARAM_UI_CALIBRATION_MENU_MODE:  // CALIBRATION MENU (handled in applyParamToModelAndSignals)
-      break;
-
-    case ParamId::PARAM_PW_VALUE:
-      paramName = " PW";
-      break;
-    case ParamId::PARAM_ADSR1_TO_VCA:
-      paramName = " ADSR1 -> VCA";
-      break;
-    case ParamId::PARAM_LFO3_SPEED:
-      paramName = " LFO3 Speed";
-      break;
-    case ParamId::PARAM_LFO3_WAVEFORM:
-      paramName = " LFO3 Shape";
-      break;
-    case ParamId::PARAM_ADSR3_RESTART:
-      paramName = " ADSR3 Restart";
-      break;
-    case ParamId::PARAM_VCA_LEVEL_ALT:
-      paramName = " VCA -> LEVEL";
-      break;
-    case ParamId::PARAM_LFO1_TO_OSC1:
-      paramName = " LFO1 -> OSC1 extra";
-      break;
-    case ParamId::PARAM_LFO1_TO_OSC2:
-      paramName = " LFO1 -> OSC2 extra";
-      break;
-    case ParamId::PARAM_LFO1_TO_OSC3:
-      paramName = " LFO1 -> OSC3 extra";
-      break;
-    case ParamId::PARAM_LFO2_TO_OSC2_COARSE:
-      paramName = " LFO2 -> OSC2 coarse";
-      break;
-    case ParamId::PARAM_LFO2_TO_OSC3_COARSE:
-      paramName = " LFO2 -> OSC3 coarse";
-      break;
-    case ParamId::PARAM_CHARACTER:
-      paramName = " Character";
-      break;
-    case ParamId::PARAM_ADSR3_PITCH_MODE:
-      paramName = " EnvDCO pitch centered";
-      break;
+    // --- Additional Controls ---
+    case ParamId::PARAM_PW_VALUE:                  paramName = " PW"; break;
+    case ParamId::PARAM_ADSR1_TO_VCA:              paramName = " ADSR1 -> VCA"; break;
+    case ParamId::PARAM_LFO3_SPEED:                paramName = " LFO3 Speed"; break;
+    case ParamId::PARAM_LFO3_WAVEFORM:             paramName = " LFO3 Shape"; break;
+    case ParamId::PARAM_ADSR3_RESTART:             paramName = " ADSR3 Restart"; break;
+    case ParamId::PARAM_VCA_LEVEL_ALT:             paramName = " VCA -> LEVEL"; break;
+    case ParamId::PARAM_LFO1_TO_OSC1:              paramName = " LFO1 -> OSC1 extra"; break;
+    case ParamId::PARAM_LFO1_TO_OSC2:              paramName = " LFO1 -> OSC2 extra"; break;
+    case ParamId::PARAM_LFO1_TO_OSC3:              paramName = " LFO1 -> OSC3 extra"; break;
+    case ParamId::PARAM_LFO2_TO_OSC2_COARSE:       paramName = " LFO2 -> OSC2 coarse"; break;
+    case ParamId::PARAM_LFO2_TO_OSC3_COARSE:       paramName = " LFO2 -> OSC3 coarse"; break;
+    case ParamId::PARAM_CHARACTER:                 paramName = " Character"; break;
+    case ParamId::PARAM_ADSR3_PITCH_MODE:          paramName = " EnvDCO pitch centered"; break;
 
     default:
       paramName = "";
       break;
   }
 }
-//1 bool saw
-//2 bool tri
-//3 bool sin
-//4 bool sqr
-//5 bool saw2
-//6 bool sqr2
-//7 sqrLevel
-//8 sqr2Level
-//9 SUBLevel
-//10 Octave
-//11 OSC2Detune
-//12 OSC2Interval
-//13 OSC2LFO
-//14 LFO1ToPitch
-//15 ADSR3ToPitch
-//16 VelocityToVCF
-//17 VelocityToVCA
-//18 PW
-//19 LFOToPWM
-//20 ADSR3ToPWM
-//21 LFO1Speed
-//22 LFO1Shape --- howtodisplay?
-//23 LFO2Speed  ---
-//24 LFO2Shape ---
-//25 LFO3Speed
-//26 LFO3Shape
-//27 Keytracking ---
-//28 Portamento ---
-//29 OscPhaseSync ---  mostrar de alguna forma
-//30 ResonanceAmpCompensation --- bool
-//31 ADSR1Restart
-//32 ADSR2Restart --- bool
-//33 OSC3 Interval (ParamId)
-//34 OSC3 Detune
-//35 LFO2->OSC3
-//36
-//37 LFO2TOVCF  ---
-//38 LFO1TOPWM  ---
-//39 LFO1TOVCA ---
-//40 VCALEVEL ?
-//41 FUNCTION_KEY
-//42 ADSR3 ENABLED
-//43 ADSR3 TO OSC SELECT
-//44 VOICE MODE
-//45 UNISON DETUNE
-//46 CALIBRATION MODE
-//47 CALIBRATION VAL
-
-/*
-// bytes
-  TG_SAW1, 1
-  TG_SAW2, 2
-  TG_TRI, 3
-  TG_SIN, 4
-  // 5, 6 unused (were TG_SQR1/SQR2 → PARAM_SQR*_STATUS)
-  TG_RESO_AMP_COMP, 7
-  TG_ADSR1_RESTART, 8
-  TG_ADSR2_RESTART, 9
-  TG_ADSR3_TO_OSC_SELECT, 10
-  TG_LFO1_WAVE, 11
-  TG_LFO2_WAVE, 12
-// bytes
-  ACTION_octave, 13
-  ACTION_OSC2_interval, 14
-  ACTION_OSC2_detune, 15
-  ACTION_LFO2_to_OSC2_detune, 16
-  ACTION_OSC3_interval, 33
-  ACTION_OSC3_detune, 34
-  ACTION_LFO2_to_OSC3_detune, 35
-  ACTION_osc_sync_mode, 17
-  ACTION_portamento_time, 18
-  ACTION_VCF_keytrack, 19
-  ACTION_velocity_to_VCF, 20
-  ACTION_velocity_to_VCA, 21
-  ACTION_SQR1_level, 22
-  ACTION_SQR2_level, 23
-  ACTION_SUB_level, 24
-  ACTION_calibration, 25
-
-  TG_VOICE_MODE, 26
-  ACTION_UNISON_DETUNE, 27
-
-  //uint16_t
-  ACTION_LFO1_to_DCO, 40
-  ACTION_LFO1_speed, 41
-  ACTION_LFO2_speed, 42
-  ACTION_VCA_level, 43
-  ACTION_LFO1_to_VCA, 44
-  ACTION_LFO2_to_PWM, 45
-  ACTION_ADSR3_to_PWM, 46
-  ACTION_ADSR3_to_DETUNE1, 47
-
-// solo a SCREEN_CONTROLLER
-  ACTION_select_preset, 100
-  ACTION_calibration, 101
-  // solo a SCREEN_CONTROLLER
-  SELECT_LFO_N, 110
-  WORK_WITH_PRESETS, 111
-  PRESET_SAVE_MODE, 112
-  SAVE_PRESET, 113
-
-    // no envian datos ?
-  TG_MAN_FADERS, 120
-  TG_MAN_FADER_ROW1, 121
-  TG_MAN_FADER_ROW2, 122
-  TG_MANUAL_VCF_POTS, 123
-  TG_MANUAL_PWM_POTS, 124
-  TG_MANUAL_ALL, 125
-  TG_ENABLE_ADSR3, 126
-  TG_FUNC, 127
-  SELECT_ENC_ACTION, 128
-  */

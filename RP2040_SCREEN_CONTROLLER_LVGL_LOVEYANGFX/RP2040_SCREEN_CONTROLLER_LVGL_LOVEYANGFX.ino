@@ -1,18 +1,14 @@
 #include "Arduino.h"
 
-// 1 = show LVGL FPS/CPU overlay (bottom-right). 0 = hide + pause (shipping).
-// Requires LV_USE_PERF_MONITOR=1 in libraries/lv_conf.h (always on for the API).
 #ifndef SCREEN_PERF_MONITOR
 #define SCREEN_PERF_MONITOR 0
 #endif
 
 #define SCREEN_SRAM_HOT 1
-
 #define LGFX_USE_V1
 #define LV_COLOR_16_SWAP 0
 
 #include <Adafruit_TinyUSB.h>
-
 #include <LovyanGFX.hpp>
 #include <lvgl.h>
 
@@ -24,32 +20,148 @@
 #include "displayParams.h"
 
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////  SSD1309 / U8g2 Library - Section
+/////////////////////////////////////////////////////////////////////////////////////////////////
+#include <U8g2lib.h>
+#include <SPI.h>
+
+// --- Hardware SPI1 Callback for U8g2 on RP2040 ---
+uint8_t u8g2_byte_rp2040_hw_spi1(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr) {
+  switch (msg) {
+    case U8X8_MSG_BYTE_SEND:
+      SPI1.transfer((uint8_t *)arg_ptr, arg_int);
+      break;
+    case U8X8_MSG_BYTE_INIT:
+      SPI1.setSCK(14);
+      SPI1.setTX(15);
+      SPI1.begin();
+      break;
+    case U8X8_MSG_BYTE_SET_DC:
+      u8x8_gpio_SetDC(u8x8, arg_int);
+      break;
+    case U8X8_MSG_BYTE_START_TRANSFER:
+      u8x8_gpio_SetCS(u8x8, u8x8->display_info->chip_enable_level);
+      SPI1.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
+      break;
+    case U8X8_MSG_BYTE_END_TRANSFER:
+      SPI1.endTransaction();
+      u8x8_gpio_SetCS(u8x8, u8x8->display_info->chip_disable_level);
+      break;
+    default:
+      return 0;
+  }
+  return 1;
+}
+
+// Create U8g2 display instance pointing to our hardware SPI1 callback
+// (If your display has an RST/RES pin, connect it to 3.3V or specify the pin instead of U8X8_PIN_NONE)
+class U8G2_SSD1309_SPI1 : public U8G2 {
+  public:
+    U8G2_SSD1309_SPI1(const u8g2_cb_t *rotation, uint8_t cs, uint8_t dc, uint8_t reset = U8X8_PIN_NONE) : U8G2() {
+      u8g2_Setup_ssd1309_128x64_noname0_f(&u8g2, rotation, u8g2_byte_rp2040_hw_spi1, u8x8_gpio_and_delay_arduino);
+      u8x8_SetPin_4Wire_HW_SPI(getU8x8(), cs, dc, reset);
+    }
+};
+
+// Instantiate: CS=16, DC=17, RST=U8X8_PIN_NONE (or your RST pin)
+U8G2_SSD1309_SPI1 u8g2(U8G2_R0, /* cs= */ 16, /* dc= */ 17, /* rst= */ U8X8_PIN_NONE);
+
+static uint32_t lastOledDrawMillis = 0;
+
+void SCREEN_HOT(render_ssd1309)() {
+  // Local snapshot of variables
+  uint8_t num;
+  char name[17];
+  uint8_t osc1, osc2, sub;
+  const char* toastName;
+  int32_t toastVal;
+  bool showToast;
+
+  screen_state_lock();
+  num = presetNumber;
+  snapshot_preset_name(name);
+  osc1 = OSC1Level;
+  osc2 = OSC2Level;
+  sub  = SUBLevel;
+  toastName = paramName;
+  toastVal  = paramValue;
+  showToast = paramChangeTimerFlag;
+  screen_state_unlock();
+
+  u8g2.clearBuffer();
+
+  // -------------------------------------------------------------
+  // 1. TOP HEADER: Mini Level Bars (OSC1, OSC2, SUB) [Y: 0 - 10]
+  // -------------------------------------------------------------
+  u8g2.setFont(u8g2_font_4x6_tr);
+  u8g2.drawStr(0, 7, "1");
+  u8g2.drawFrame(6, 1, 32, 7);
+  u8g2.drawBox(7, 2, (osc1 * 30) / 127, 5); // 0-127 mapped to 30px width
+
+  u8g2.drawStr(44, 7, "2");
+  u8g2.drawFrame(50, 1, 32, 7);
+  u8g2.drawBox(51, 2, (osc2 * 30) / 127, 5);
+
+  u8g2.drawStr(88, 7, "S");
+  u8g2.drawFrame(94, 1, 32, 7);
+  u8g2.drawBox(95, 2, (sub * 30) / 127, 5);
+
+  u8g2.drawHLine(0, 11, 128); // Separator line
+
+  // -------------------------------------------------------------
+  // 2. MAIN CENTER: Big Preset Number + Preset Name [Y: 12 - 50]
+  // -------------------------------------------------------------
+  // Draw Big Preset Number (e.g. "208")
+  char numStr[6];
+  itoa(num, numStr, 10);
+  u8g2.setFont(u8g2_font_logisoso24_tn); // Tall 24px numbers
+  u8g2.drawStr(2, 38, numStr);
+
+  // Draw Preset Name right next to / below the number
+  u8g2.setFont(u8g2_font_7x14_tf); // Clean 14px text
+  u8g2.drawStr(56, 26, name);
+
+  // -------------------------------------------------------------
+  // 3. BOTTOM FOOTER: Active Parameter Toast or Mode [Y: 52 - 64]
+  // -------------------------------------------------------------
+  u8g2.drawHLine(0, 51, 128); // Separator line
+
+  if (showToast && toastName && toastName[0] != '\0') {
+    // Show active parameter toast inverted (white box with black text)
+    u8g2.drawBox(0, 53, 128, 11);
+    u8g2.setDrawColor(0); // Black text on white box
+    u8g2.setFont(u8g2_font_5x8_tf);
+    
+    char toastStr[32];
+    snprintf(toastStr, sizeof(toastStr), "%s: %ld", toastName, (long)toastVal);
+    u8g2.drawStr(2, 62, toastStr);
+    u8g2.setDrawColor(1); // Restore white draw color
+  } else {
+    // Idle footer status
+    u8g2.setFont(u8g2_font_5x8_tf);
+    u8g2.drawStr(2, 62, "DCO SYNTHESIZER");
+  }
+
+  // Push buffer to display
+  u8g2.sendBuffer();
+}
+///////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
 static const uint16_t screenWidth = 480;
 static const uint16_t screenHeight = 320;
 
-enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 8 };
+// Double buffer: 1/8th screen per buffer (38.4KB each in SRAM)
+enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 7 };
 static lv_color_t buf1[SCREENBUFFER_SIZE_PIXELS];
 static lv_color_t buf2[SCREENBUFFER_SIZE_PIXELS];
 
 LGFX tft; /* TFT instance */
 
-#if LV_USE_LOG != 0
-/* Serial debugging */
-void my_print(const char *buf) {
-  Serial.printf(buf);
-  Serial.flush();
-}
-#endif
-
-/* Display flushing: push LVGL dirty area to LovyanGFX, then mark flush ready. */
 void SCREEN_HOT(my_disp_flush)(lv_display_t *disp, const lv_area_t *area, uint8_t *pixelmap) {
   uint32_t w = (area->x2 - area->x1 + 1);
   uint32_t h = (area->y2 - area->y1 + 1);
-
-  if (LV_COLOR_16_SWAP) {
-    size_t len = lv_area_get_size(area);
-    lv_draw_sw_rgb565_swap(pixelmap, len);
-  }
 
   tft.startWrite();
   tft.setAddrWindow(area->x1, area->y1, w, h);
@@ -59,34 +171,22 @@ void SCREEN_HOT(my_disp_flush)(lv_display_t *disp, const lv_area_t *area, uint8_
   lv_disp_flush_ready(disp);
 }
 
-/* LVGL tick source: Arduino millis(). */
 static uint32_t SCREEN_HOT(my_tick_get_cb)(void) {
   return millis();
 }
 
 uint32_t paramChangeLastMillis = 0;
-
-// Core1-owned screen mode. Each 's' signal (or apply_param_* mode change) raises
-// signalFlag on Core0 and Core1 latches the new mode here in
-// handleScreenModeChange(). The silence watchdog below is the one place Core1
-// writes serialSignal back, and only when no fresher signal is pending.
 static ScreenMode currentMode = ScreenMode::PresetScroll;
-
-// Silence is opened and closed by a pair of 's' frames around a preset recall
-// (DCO preset_store_load). Losing the closing one would leave the UI ignoring
-// every param frame from then on, so time it out: longer than a recall's mirror
-// burst, short enough that a dropped marker reads as a hiccup and not a hang.
-static const uint32_t silentModeTimeoutMillis = 2000;
+static const uint32_t silentModeTimeoutMillis = 150; // Fast 150ms timeout
 static uint32_t silentModeEnteredMillis = 0;
 
-#if defined(NO_USB) || defined(DISABLE_USB_SERIAL)
-#error This sketch needs USB Serial (Serial.begin). Arduino IDE: Tools -> USB Stack -> Pico SDK (not No USB).
-#endif
+  /// LOAD FONT TO SRAM
+  // 1. Declare an SRAM buffer for your font bitmap (adjust size to fit your font, e.g. 16KB)
+static uint8_t ram_font_bitmap[16384]; // 16 KB SRAM buffer
+static lv_font_fmt_txt_dsc_t ram_font_dsc;
+static lv_font_t ram_big_font;
 
-/////////////////////////////////////////////////////////// setup ///////////////////////////////////////////////////
-// Core0 boot: USB debug Serial + peer UART(s). See Serial.h pin map.
-// DCO3: Serial1 GP13 ← Input.
-// DCO4: Serial2 GP21 ← Mainboard PA9, and Serial1 GP13 ← Input.
+
 void setup() {
   Serial.begin(2000000);
 
@@ -106,80 +206,126 @@ void setup() {
 #endif
   init_screen_serial();
 
-  // USBDevice.setManufacturerDescriptor("FELA         ");   /// Why doesnt it work?
-  // USBDevice.setProductDescriptor("DCO4 Screen Controller       ");
+    // --- INITIALIZE SSD1309 ---
+    u8g2.begin();
+    u8g2.setBusClock(8000000); // 8MHz SPI for ultra-fast transfers (< 1ms)
 }
 
-
-// Core1 boot: LVGL + LovyanGFX display + SquareLine ui_init.
 void setup1() {
   lv_init();
-
-#if LV_USE_LOG != 0
-  lv_log_register_print_cb(my_print);
-#endif
-
-  tft.begin();        /* TFT init */
-  tft.setRotation(3); /* Landscape orientation, flipped */
+  tft.begin();
+  tft.setRotation(3);
 
   static lv_disp_t *disp;
   disp = lv_display_create(screenWidth, screenHeight);
-  
-  lv_display_set_buffers(
-    disp, 
-    buf1, 
-    buf2, 
-    SCREENBUFFER_SIZE_PIXELS * sizeof(lv_color_t), 
-    LV_DISPLAY_RENDER_MODE_PARTIAL
-  );
-
+  lv_display_set_buffers(disp, buf1, buf2, SCREENBUFFER_SIZE_PIXELS * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(disp, my_disp_flush);
-
   lv_tick_set_cb(my_tick_get_cb);
 
 #if LV_USE_PERF_MONITOR && !SCREEN_PERF_MONITOR
-  // lv_display_create auto-shows the sysmon label; hide + pause for shipping.
   lv_sysmon_hide_performance(disp);
   lv_sysmon_performance_pause(disp);
 #endif
 
+//load_big_font_to_sram(const lv_font_t *flash_font, size_t bitmap_size)
   ui_init();
-  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_CURSOR | LV_STATE_DEFAULT);
-  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_MAIN | LV_STATE_FOCUSED);
-  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_CURSOR | LV_STATE_FOCUSED);
+
+  lv_obj_set_style_text_opa(ui_PresetN, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+  // lv_obj_set_style_text_opa(ui_PresetNShadow, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // ADD THIS LINE TO HIDE THE SHADOW:
+    lv_obj_add_flag(ui_PresetNShadow, LV_OBJ_FLAG_HIDDEN);
 }
 
-/////////////////////////////////////////////////////////// loop ///////////////////////////////////////////////////
-// Core0 hot path: drain peer UART parser(s).
 void loop(void) {
   serial_read_n();
+
+  uint32_t now = millis();
+  if (now - lastOledDrawMillis >= 33) {
+    lastOledDrawMillis = now;
+    render_ssd1309();
+  }
 }
 
-// --- Helpers for loop1() ---
-
-// Consume signalFlag: latch the new mode and load LVGL screens / show-hide
-// panels for it. The flag is consumed atomically together with serialSignal
-// so a signal arriving mid-update is never lost.
-static void SCREEN_HOT(handleScreenModeChange)() {
-  bool pending = false;
-  uint8_t rawMode = 0;
+// --- SINGLE ATOMIC STATE CAPTURE (< 1 microsecond) ---
+static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   screen_state_lock();
+
+  // Signals
+  snap.hasSignal = signalFlag;
   if (signalFlag) {
-    rawMode    = serialSignal;
+    snap.signalMode = serialSignal;
     signalFlag = false;
-    pending    = true;
-  }
-  screen_state_unlock();
-  if (!pending) {
-    return;
   }
 
-  currentMode = static_cast<ScreenMode>(rawMode);
+  // Presets
+  snap.hasPresetScroll = presetScrollFlag;
+  presetScrollFlag = false;
+  snap.presetNum = presetNumber;
+  snapshot_preset_name(snap.presetName);
+
+  snap.hasPresetChar = presetCharFlag;
+  if (presetCharFlag) {
+    snap.presetChar = presetChar;
+    presetCharFlag = false;
+  } else {
+    snap.presetChar = presetChar;
+  }
+
+  // Parameters
+  snap.hasParamChange = paramChangeFlag;
+  paramChangeFlag = false;
+  snap.paramName = paramName;
+  snap.paramValue = paramValue;
+  snap.paramNumber = paramNumber;
+
+  // Level Bars
+  snap.levelBars = levelBarFlag;
+  levelBarFlag = 0;
+  snap.osc1Level = OSC1Level;
+  snap.osc2Level = OSC2Level;
+  snap.subLevel  = SUBLevel;
+
+  // ADSR 1 & 2
+  snap.hasADSR1 = updateADSR1Flag;
+  updateADSR1Flag = false;
+  if (snap.hasADSR1) {
+    snap.a1a = ADSR1Attack;
+    snap.a1d = ADSR1Decay;
+    snap.a1s = ADSR1Sustain;
+    snap.a1r = ADSR1Release;
+  }
+
+  snap.hasADSR2 = updateADSR2Flag;
+  updateADSR2Flag = false;
+  if (snap.hasADSR2) {
+    snap.a2a = ADSR2Attack;
+    snap.a2d = ADSR2Decay;
+    snap.a2s = ADSR2Sustain;
+    snap.a2r = ADSR2Release;
+  }
+
+  // Unconditionally copy calibration values so snap is always 100% valid
+  snap.calOffset    = offset;
+  snap.calAmp440    = ampComp440Display;
+  snap.calPwCenter  = calPwCenterDisplay;
+  snap.calOscN      = manualCalibrationOSCN;
+  snap.calStage     = manualCalibrationStage;
+  snap.calGap       = calibrationGap;
+  snap.calTopology  = screenCalTopology;
+
+  screen_state_unlock();
+}
+
+// Lock-Free Mode Handler
+static void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
+  if (!snap.hasSignal) return;
+
+  currentMode = static_cast<ScreenMode>(snap.signalMode);
 
   switch (currentMode) {
     case ScreenMode::PresetScroll:
-      draw_preset_scroll_1(currentMode);
+      draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
       break;
 
     case ScreenMode::LoadSaveExit:
@@ -187,66 +333,42 @@ static void SCREEN_HOT(handleScreenModeChange)() {
       lv_obj_add_flag(ui_PresetSavePanel, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(ui_PresetNewName, LV_OBJ_FLAG_HIDDEN);
       currentMode = ScreenMode::PresetScroll;
-      draw_preset_scroll_1(currentMode);
+      draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
       break;
 
     case ScreenMode::SaveSelectPreset: {
-      // SAVE MODE - Select destination preset
-      char name[17];
-      byte num;
-      screen_state_lock();
-      num = presetNumber;
-      snapshot_preset_name(name);
-      screen_state_unlock();
-
       char str[12];
-      itoa(num, str, 10);
-      lv_textarea_set_text(ui_PresetNewName, name);
+      itoa(snap.presetNum, str, 10);
+      lv_textarea_set_text(ui_PresetNewName, snap.presetName);
       lv_label_set_text(ui_PresetNOLD, str);
       lv_label_set_text(ui_PresetNOLDShadow, str);
-      lv_label_set_text(ui_PresetNameOLD, name);
-      lv_label_set_text(ui_PresetNameOLDShadow, name);
-      draw_preset_scroll_1(currentMode);
+      lv_label_set_text(ui_PresetNameOLD, snap.presetName);
+      lv_label_set_text(ui_PresetNameOLDShadow, snap.presetName);
+      draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
       lv_obj_remove_flag(ui_PresetSavePanel, LV_OBJ_FLAG_HIDDEN);
       break;
     }
 
     case ScreenMode::SaveSetName:
-      // SAVE MODE - set preset name
-      screen_state_lock();
-      presetChar = 0;
-      screen_state_unlock();
       lv_obj_remove_flag(ui_PresetNewName, LV_OBJ_FLAG_HIDDEN);
       lv_textarea_set_cursor_pos(ui_PresetNewName, 0);
       break;
 
-case ScreenMode::SaveCompleted:
-      // PRESET SAVED
+    case ScreenMode::SaveCompleted:
       lv_obj_add_flag(ui_PresetNewName, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(ui_PresetSavePanel, LV_OBJ_FLAG_HIDDEN);
-
-      // --- Sizing & Vertical Space ---
-      lv_obj_set_width(ui_PresetSavedMesage, 200);   // Set horizontal width
-      lv_obj_set_height(ui_PresetSavedMesage, 100);   // Increase vertical height (adjust 50 to 60/70 as needed)
-      
-      // Optional: Adjust vertical alignment (X offset = 0, Y offset = -20 to shift up, +20 to shift down)
+      lv_obj_set_width(ui_PresetSavedMesage, 200);
+      lv_obj_set_height(ui_PresetSavedMesage, 100);
       lv_obj_align(ui_PresetSavedMesage, LV_ALIGN_CENTER, -20, 0);
-
       lv_obj_remove_flag(ui_PresetSavedMesage, LV_OBJ_FLAG_HIDDEN);
       paramChangeTimerFlag  = true;
       paramChangeLastMillis = millis();
       currentMode = ScreenMode::PresetScroll;
-      draw_preset_scroll_1(currentMode);
+      draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
       break;
 
-case ScreenMode::Silent:
+    case ScreenMode::Silent:
       silentModeEnteredMillis = millis();
-      
-      // ADD THIS: Clear any pending param change from before the load
-      screen_state_lock();
-      paramChangeFlag = false;
-      screen_state_unlock();
-      
       break;
 
     case ScreenMode::CalibrationMenu:
@@ -257,7 +379,7 @@ case ScreenMode::Silent:
     case ScreenMode::ManualCalibration:
       lv_obj_remove_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
       lv_scr_load(ui_MANUALCALIBRATION);
-      drawManualCalibration();  // initial render; updates are flag-driven
+      drawManualCalibration(snap);
       break;
 
     default:
@@ -265,29 +387,24 @@ case ScreenMode::Silent:
   }
 }
 
-// Watchdog for a lost end-of-silence marker (see silentModeTimeoutMillis). Runs
-// right after handleScreenModeChange, so signalFlag has just been drained: if it
-// is set again a newer signal beat us to it and wins.
-static void SCREEN_HOT(expireSilentMode)() {
+// Watchdog with Core 0 State Synchronization
+static void SCREEN_HOT(expireSilentMode)(const Core1Snapshot &snap) {
   if (currentMode != ScreenMode::Silent) return;
   if (millis() - silentModeEnteredMillis < silentModeTimeoutMillis) return;
 
-  bool expired = false;
+  // Sync state back to shared memory so Core 0 knows silence ended
   screen_state_lock();
-  if (!signalFlag && serialSignal == screen_mode_raw(ScreenMode::Silent)) {
+  if (serialSignal == screen_mode_raw(ScreenMode::Silent)) {
     serialSignal = screen_mode_raw(ScreenMode::PresetScroll);
-    expired      = true;
   }
   screen_state_unlock();
 
-  if (expired) {
-    currentMode = ScreenMode::PresetScroll;
-    draw_preset_scroll_1(currentMode);
-  }
+  currentMode = ScreenMode::PresetScroll;
+  draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
 }
 
-// Modes ≤5: hide timed toasts; update preset scroll / param label / name cursor.
-static void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode) {
+// Lock-Free Preset & Toast UI
+static void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode, const Core1Snapshot &snap) {
   if (static_cast<uint8_t>(mode) > static_cast<uint8_t>(ScreenMode::SaveCompleted)) {
     return;
   }
@@ -300,159 +417,116 @@ static void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode) {
     }
   }
 
-  bool charSelected = false;
-  bool scrolled     = false;
-  bool paramChanged = false;
-  uint8_t charPos   = 0;
-  screen_state_lock();
-  if (presetCharFlag) {
-    presetCharFlag = false;
-    charSelected   = true;
-    charPos        = presetChar;
+  if (snap.hasPresetChar) {
+    lv_textarea_set_cursor_pos(ui_PresetNewName, snap.presetChar);
   }
-  if (presetScrollFlag) {
-    presetScrollFlag = false;
-    scrolled         = true;
-  }
-  if (paramChangeFlag) {
-    paramChangeFlag = false;
-    paramChanged    = true;
-  }
-  screen_state_unlock();
 
-  if (charSelected) {
-    lv_textarea_set_cursor_pos(ui_PresetNewName, charPos);
-  }
-if (scrolled) {
+  if (snap.hasPresetScroll) {
     lv_obj_add_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
-    draw_preset_scroll_1(mode);
+    draw_preset_scroll_1(mode, snap.presetNum, snap.presetName, snap.presetChar);
     paramChangeTimerFlag = false;
-    
-    // FORCE immediate rasterization and push to screen right now!
-    lv_refr_now(NULL);
-  } else if (paramChanged) {
-    draw_param_1();
+    lv_refr_now(NULL); // Instant hardware refresh
+  } else if (snap.hasParamChange && snap.paramName && snap.paramName[0] != '\0') {
+    draw_param_1(snap.paramName, snap.paramValue);
   }
 }
 
-// Push OSC1/OSC2/SUB level bars for pending levelBarFlag bits (all in Silent).
-static void SCREEN_HOT(updateLevelBars)(ScreenMode mode) {
-  uint8_t bars;
-  uint8_t osc1, osc2, sub;
-  screen_state_lock();
-  bars         = levelBarFlag;
-  levelBarFlag = 0;
-  osc1         = OSC1Level;
-  osc2         = OSC2Level;
-  sub          = SUBLevel;
-  screen_state_unlock();
-
-  if (bars == 0) {
-    return;
-  }
+// Lock-Free Level Bars
+static void SCREEN_HOT(updateLevelBars)(ScreenMode mode, const Core1Snapshot &snap) {
+  if (snap.levelBars == 0 && mode != ScreenMode::Silent) return;
 
   if (mode == ScreenMode::Silent) {
-    lv_bar_set_value(ui_OSC1Level, osc1, LV_ANIM_OFF); // <--- Change to LV_ANIM_OFF
-    lv_bar_set_value(ui_OSC2Level, osc2, LV_ANIM_OFF);
-    lv_bar_set_value(ui_SUBLevel, sub, LV_ANIM_OFF);
+    lv_bar_set_value(ui_OSC1Level, snap.osc1Level, LV_ANIM_ON);
+    lv_bar_set_value(ui_OSC2Level, snap.osc2Level, LV_ANIM_ON);
+    lv_bar_set_value(ui_SUBLevel,  snap.subLevel,  LV_ANIM_ON);
   } else {
-    if (bars & LEVEL_BAR_OSC1) {
-      lv_bar_set_value(ui_OSC1Level, osc1, LV_ANIM_OFF);
-    }
-    if (bars & LEVEL_BAR_OSC2) {
-      lv_bar_set_value(ui_OSC2Level, osc2, LV_ANIM_OFF);
-    }
-    if (bars & LEVEL_BAR_SUB) {
-      lv_bar_set_value(ui_SUBLevel, sub, LV_ANIM_OFF);
-    }
+    if (snap.levelBars & LEVEL_BAR_OSC1) lv_bar_set_value(ui_OSC1Level, snap.osc1Level, LV_ANIM_ON);
+    if (snap.levelBars & LEVEL_BAR_OSC2) lv_bar_set_value(ui_OSC2Level, snap.osc2Level, LV_ANIM_ON);
+    if (snap.levelBars & LEVEL_BAR_SUB)  lv_bar_set_value(ui_SUBLevel,  snap.subLevel,  LV_ANIM_ON);
   }
 }
 
-// Refresh ADSR1/ADSR2 bar widgets when update flags are set from serial.
-static void SCREEN_HOT(updateADSRBars)() {
-  bool adsr1 = false, adsr2 = false;
-  uint16_t a1a, a1d, a1s, a1r;
-  uint16_t a2a, a2d, a2s, a2r;
-  screen_state_lock();
-  if (updateADSR1Flag) {
-    updateADSR1Flag = false;
-    adsr1 = true;
-    a1a = ADSR1Attack;
-    a1d = ADSR1Decay;
-    a1s = ADSR1Sustain;
-    a1r = ADSR1Release;
+// Lock-Free ADSR Bars (uses fast bitshift >> 5 instead of float multiplication)
+static void SCREEN_HOT(updateADSRBars)(const Core1Snapshot &snap) {
+  if (snap.hasADSR1) {
+    lv_bar_set_value(ui_ADSR1AttackBar,  (snap.a1a >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR1DecayBar,   (snap.a1d >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR1SustainBar, (snap.a1s >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR1ReleaseBar, (snap.a1r >> 5), LV_ANIM_ON);
   }
-  if (updateADSR2Flag) {
-    updateADSR2Flag = false;
-    adsr2 = true;
-    a2a = ADSR2Attack;
-    a2d = ADSR2Decay;
-    a2s = ADSR2Sustain;
-    a2r = ADSR2Release;
-  }
-  screen_state_unlock();
-
-  if (adsr1) {
-    lv_bar_set_value(ui_ADSR1AttackBar, 0.03125f * a1a, LV_ANIM_OFF);
-    lv_bar_set_value(ui_ADSR1DecayBar, 0.03125f * a1d, LV_ANIM_OFF);
-    lv_bar_set_value(ui_ADSR1SustainBar, 0.03125f * a1s, LV_ANIM_OFF);
-    lv_bar_set_value(ui_ADSR1ReleaseBar, 0.03125f * a1r, LV_ANIM_OFF);
-  }
-  if (adsr2) {
-    lv_bar_set_value(ui_ADSR2AttackBar, 0.03125f * a2a, LV_ANIM_OFF);
-    lv_bar_set_value(ui_ADSR2DecayBar, 0.03125f * a2d, LV_ANIM_OFF);
-    lv_bar_set_value(ui_ADSR2SustainBar, 0.03125f * a2s, LV_ANIM_OFF);
-    lv_bar_set_value(ui_ADSR2ReleaseBar, 0.03125f * a2r, LV_ANIM_OFF);
+  if (snap.hasADSR2) {
+    lv_bar_set_value(ui_ADSR2AttackBar,  (snap.a2a >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR2DecayBar,   (snap.a2d >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR2SustainBar, (snap.a2s >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR2ReleaseBar, (snap.a2r >> 5), LV_ANIM_ON);
   }
 }
 
-// Calibration menu tabs / manual calibration panel redraw for modes 7–8.
-// Flag-driven: only touches LVGL when a param update arrived since last loop.
-static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode) {
-  if (mode != ScreenMode::CalibrationMenu && mode != ScreenMode::ManualCalibration) {
-    return;
-  }
-
-  bool changed = false;
-  uint8_t id   = 0;
-  int32_t value = 0;
-  screen_state_lock();
-  if (paramChangeFlag) {
-    paramChangeFlag = false;
-    changed = true;
-    id      = paramNumber;
-    value   = paramValue;
-  }
-  screen_state_unlock();
-  if (!changed) {
-    return;
-  }
+// Lock-Free Calibration UI
+static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot &snap) {
+  if (mode != ScreenMode::CalibrationMenu && mode != ScreenMode::ManualCalibration) return;
+  if (!snap.hasParamChange) return;
 
   if (mode == ScreenMode::CalibrationMenu) {
-    if (id == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
-      lv_tabview_set_active(ui_calibrationTabs, value, LV_ANIM_OFF);
+    if (snap.paramNumber == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
+      lv_tabview_set_active(ui_calibrationTabs, snap.paramValue, LV_ANIM_ON);
     }
   } else {
-    drawManualCalibration();
+    drawManualCalibration(snap);
   }
 }
 
-// Core1 hot path: apply serial-driven UI updates, then LVGL timer handler.
+// Core 1 Main Loop
 void SCREEN_HOT(loop1)(void) {
-  handleScreenModeChange();
-  expireSilentMode();
-  updateBottomMessageAndPresetUI(currentMode);
-  updateLevelBars(currentMode);
-  updateADSRBars();
-  updateCalibrationUI(currentMode);
-
-  // Let LVGL run and tell us exactly how many ms until it needs to run again
-  uint32_t time_till_next = lv_timer_handler();
+  Core1Snapshot snap;
   
-  // Sleep for that amount, but max out at 5ms so we stay highly responsive
+  // 1. Capture ALL shared data in ONE atomic lock (< 1 microsecond)
+  captureCore1Snapshot(snap);
+
+  // 2. Perform all UI updates completely lock-free
+  handleScreenModeChange(snap);
+  expireSilentMode(snap);
+  updateBottomMessageAndPresetUI(currentMode, snap);
+  updateLevelBars(currentMode, snap);
+  updateADSRBars(snap);
+  updateCalibrationUI(currentMode, snap);
+
+  // 3. Render and sleep efficiently
+  uint32_t time_till_next = lv_timer_handler();
   if (time_till_next > 5) time_till_next = 5;
   if (time_till_next == 0) time_till_next = 1;
-  
-  delay(time_till_next); 
-  //lv_timer_handler();
+  delay(time_till_next);
 }
+
+void load_big_font_to_sram(const lv_font_t *flash_font, size_t bitmap_size) {
+  const lv_font_fmt_txt_dsc_t *flash_dsc = (const lv_font_fmt_txt_dsc_t *)flash_font->dsc;
+
+  // Copy font bitmap data from Flash to SRAM
+  memcpy(ram_font_bitmap, flash_dsc->glyph_bitmap, bitmap_size);
+
+  // Clone the descriptor and point its bitmap pointer to SRAM
+  ram_font_dsc = *flash_dsc;
+  ram_font_dsc.glyph_bitmap = ram_font_bitmap;
+
+  // Clone the font and point to our new RAM descriptor
+  ram_big_font = *flash_font;
+  ram_big_font.dsc = &ram_font_dsc;
+
+  // Re-assign the new SRAM font to your big preset number labels
+  lv_obj_set_style_text_font(ui_PresetN, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(ui_PresetNShadow, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(ui_PresetNNew, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(ui_PresetNNewShadow, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+  // Force solid opacity on drop shadow to save CPU rasterization cycles
+  lv_obj_set_style_text_opa(ui_PresetNShadow, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_opa(ui_PresetNShadow, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+  // Textarea cursor animations
+  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_CURSOR | LV_STATE_DEFAULT);
+  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_MAIN | LV_STATE_FOCUSED);
+  lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_CURSOR | LV_STATE_FOCUSED);
+}
+
