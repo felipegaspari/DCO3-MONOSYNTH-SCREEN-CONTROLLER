@@ -6,6 +6,8 @@
 uint16_t paramHideTimeMillis = 3000;
 bool     paramChangeTimerFlag = false;
 
+volatile uint8_t calibrationMenuIndex = 0;
+volatile bool    calibrationMenuFlag  = false;
 volatile int8_t   offset = 0;
 volatile uint16_t ampComp440Display = 0;
 volatile uint16_t calPwCenterDisplay = 0;
@@ -16,7 +18,7 @@ volatile int32_t  calibrationGap = 0;
 // Which synth this screen is attached to; set from PARAM_UI_VOICE_TOPOLOGY
 // (Serial.ino) until the Input's first announcement arrives.
 volatile CalTopology screenCalTopology = SCREEN_CAL_TOPOLOGY_DEFAULT;
-volatile uint8_t calibrationMenuIndex = 0;
+
 
 volatile uint8_t  OSC1Level = 0;
 volatile uint8_t  OSC2Level = 0;
@@ -141,6 +143,7 @@ static void apply_param_ui_calibration_menu_mode(int32_t) {
 static void apply_param_ui_menu_position(int32_t v) {
   if (v < 0) v = 0;
   calibrationMenuIndex = (uint8_t)v;
+  calibrationMenuFlag  = true;
 }
 
 // Parameter descriptor table for the screen controller.

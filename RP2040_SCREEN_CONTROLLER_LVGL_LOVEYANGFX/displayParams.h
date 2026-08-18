@@ -15,7 +15,8 @@ extern uint16_t paramHideTimeMillis;
 extern bool     paramChangeTimerFlag;
 
 extern volatile int8_t   offset;
-extern volatile uint8_t  calibrationMenuIndex;
+extern volatile uint8_t calibrationMenuIndex;
+extern volatile bool    calibrationMenuFlag;
 extern volatile uint16_t ampComp440Display;
 extern volatile uint16_t calPwCenterDisplay;
 extern volatile uint8_t  manualCalibrationOSCN;

@@ -249,11 +249,17 @@ case ScreenMode::Silent:
       
       break;
 
-    case ScreenMode::CalibrationMenu:
-      lv_obj_add_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
-      lv_scr_load(ui_MANUALCALIBRATION);
-      lv_tabview_set_active(ui_calibrationTabs, calibrationMenuIndex, LV_ANIM_ON);
-      break;
+case ScreenMode::CalibrationMenu: {
+  uint8_t tabIdx = 0;
+  screen_state_lock();
+  tabIdx = calibrationMenuIndex;
+  screen_state_unlock();
+
+  lv_obj_add_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
+  lv_scr_load(ui_MANUALCALIBRATION);
+  lv_tabview_set_active(ui_calibrationTabs, tabIdx, LV_ANIM_ON); // Kept ON as you requested
+  break;
+}
 
     case ScreenMode::ManualCalibration:
       lv_obj_remove_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
@@ -414,30 +420,37 @@ static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode) {
     return;
   }
 
+  // 1. Calibration Menu Tab Scrolling (Mode 7)
+  if (mode == ScreenMode::CalibrationMenu) {
+    bool updateTab = false;
+    uint8_t tabIdx = 0;
+    screen_state_lock();
+    if (calibrationMenuFlag) {
+      calibrationMenuFlag = false;
+      updateTab = true;
+      tabIdx = calibrationMenuIndex;
+    }
+    screen_state_unlock();
+
+    if (updateTab) {
+      lv_tabview_set_active(ui_calibrationTabs, tabIdx, LV_ANIM_ON); // Kept ON as you requested
+    }
+    return;
+  }
+
+  // 2. Manual Calibration Stage / Value Updates (Mode 8)
   bool changed = false;
-  uint8_t id   = 0;
-  int32_t value = 0;
   screen_state_lock();
   if (paramChangeFlag) {
     paramChangeFlag = false;
     changed = true;
-    id      = paramNumber;
-    value   = paramValue;
   }
   screen_state_unlock();
-  if (!changed) {
-    return;
-  }
 
-  if (mode == ScreenMode::CalibrationMenu) {
-    if (id == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
-      lv_tabview_set_active(ui_calibrationTabs, value, LV_ANIM_OFF);
-    }
-  } else {
+  if (changed) {
     drawManualCalibration();
   }
 }
-
 // Core1 hot path: apply serial-driven UI updates, then LVGL timer handler.
 void SCREEN_HOT(loop1)(void) {
   handleScreenModeChange();
