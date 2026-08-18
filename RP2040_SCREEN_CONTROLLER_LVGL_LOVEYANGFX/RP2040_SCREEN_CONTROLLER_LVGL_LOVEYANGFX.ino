@@ -62,10 +62,10 @@ static uint32_t silentModeEnteredMillis = 0;
 
 // Tracker for manual calibration redraws
 static uint8_t lastRenderedStage = 255;
-static int32_t lastRenderedGap   = -999999;
-static int8_t  lastRenderedOff   = 0;
-static uint16_t lastRendered440  = 0;
-static uint16_t lastRenderedPw   = 0;
+static int32_t lastRenderedGap = -999999;
+static int8_t lastRenderedOff = 0;
+static uint16_t lastRendered440 = 0;
+static uint16_t lastRenderedPw = 0;
 
 /// LOAD FONT TO SRAM
 static uint8_t ram_font_bitmap[16384];  // 16 KB SRAM buffer
@@ -121,6 +121,9 @@ void loop(void) {
 
   update_u8g2_core0();
 }
+// Local Core 1 tracking for the active popover panel
+static InspectorType currentInspector = InspectorType::None;
+static bool inspectorVisible = false;
 
 // --- SINGLE ATOMIC STATE CAPTURE (< 1 microsecond) ---
 static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
@@ -154,6 +157,12 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   snap.paramValue = paramValue;
   snap.paramNumber = paramNumber;
 
+  // Inspector Shell Capture
+  snap.inspectorType = activeInspector;
+  snap.hasInspectorChange = inspectorActiveFlag;
+  snap.inspectorActivityTime = inspectorLastActivityMillis;
+  inspectorActiveFlag = false;
+
   // Level Bars
   snap.levelBars = levelBarFlag;
   levelBarFlag = 0;
@@ -176,7 +185,7 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   snap.a2s = ADSR2Sustain;
   snap.a2r = ADSR2Release;
 
-  // Unconditionally copy calibration values so snap is always 100% valid
+  // Calibration
   snap.calMenuIndex = calibrationMenuIndex;
   snap.calOffset = offset;
   snap.calAmp440 = ampComp440Display;
@@ -188,6 +197,60 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
 
   screen_state_unlock();
 }
+
+// ---------------------------------------------------------------------------
+// Contextual Popover Panel — Core 1 Display Shells (No drawing code yet)
+// ---------------------------------------------------------------------------
+static void show_inspector_panel(InspectorType type, const Core1Snapshot &snap) {
+  // [SHELL] LVGL display code to instantiate / show the popover card goes here
+}
+
+static void update_inspector_panel(InspectorType type, const Core1Snapshot &snap) {
+  // [SHELL] LVGL display code to update curves, sliders, and values goes here
+}
+
+static void hide_inspector_panel() {
+  // [SHELL] LVGL display code to dismiss the popover card goes here
+}
+
+static void SCREEN_HOT(updateInspectorLifecycle)(ScreenMode mode, const Core1Snapshot &snap) {
+  // 1. Suppress inspectors on modal screens (Save, Calibration, Silent)
+  if (mode != ScreenMode::PresetScroll && mode != ScreenMode::LoadSaveExit) {
+    if (inspectorVisible) {
+      hide_inspector_panel();
+      inspectorVisible = false;
+      currentInspector = InspectorType::None;
+    }
+    return;
+  }
+
+  uint32_t now = millis();
+
+  // 2. Open or switch inspector if a control was touched
+  if (snap.inspectorType != InspectorType::None) {
+    if (!inspectorVisible || currentInspector != snap.inspectorType) {
+      currentInspector = snap.inspectorType;
+      inspectorVisible = true;
+      show_inspector_panel(currentInspector, snap);
+    } else if (snap.hasParamChange || snap.hasADSR1 || snap.hasADSR2 || snap.levelBars) {
+      update_inspector_panel(currentInspector, snap);
+    }
+  }
+
+  // 3. Inactivity Timeout -> Dismiss inspector smoothly
+  if (inspectorVisible) {
+    if (now - snap.inspectorActivityTime >= inspectorTimeoutMillis) {
+      hide_inspector_panel();
+      inspectorVisible = false;
+      currentInspector = InspectorType::None;
+
+      screen_state_lock();
+      activeInspector = InspectorType::None;
+      screen_state_unlock();
+    }
+  }
+}
+
 
 // Lock-Free Mode Handler
 static void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
@@ -247,7 +310,7 @@ static void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
     case ScreenMode::CalibrationMenu:
       lv_obj_add_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
       lv_scr_load(ui_MANUALCALIBRATION);
-      lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF); // <--- ADD THIS
+      lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF);  // <--- ADD THIS
       break;
 
     case ScreenMode::ManualCalibration:
@@ -351,23 +414,19 @@ static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot
 
   // 2. Manual Calibration Real-Time Tuner & Stage Updates (Mode 8)
   if (mode == ScreenMode::ManualCalibration) {
-    if (snap.calStage != lastRenderedStage ||
-      snap.calGap   != lastRenderedGap   ||
-      snap.calOffset != lastRenderedOff   ||
-      snap.calAmp440 != lastRendered440  ||
-      snap.calPwCenter != lastRenderedPw ||
-      snap.hasParamChange) {
+    if (snap.calStage != lastRenderedStage || snap.calGap != lastRenderedGap || snap.calOffset != lastRenderedOff || snap.calAmp440 != lastRendered440 || snap.calPwCenter != lastRenderedPw || snap.hasParamChange) {
 
       lastRenderedStage = snap.calStage;
-    lastRenderedGap   = snap.calGap;
-    lastRenderedOff   = snap.calOffset;
-    lastRendered440  = snap.calAmp440;
-    lastRenderedPw   = snap.calPwCenter;
+      lastRenderedGap = snap.calGap;
+      lastRenderedOff = snap.calOffset;
+      lastRendered440 = snap.calAmp440;
+      lastRenderedPw = snap.calPwCenter;
 
-    drawManualCalibration(snap);
-      }
+      drawManualCalibration(snap);
+    }
   }
 }
+
 // Core 1 Main Loop
 void SCREEN_HOT(loop1)(void) {
   Core1Snapshot snap;
@@ -377,6 +436,7 @@ void SCREEN_HOT(loop1)(void) {
   handleScreenModeChange(snap);
   expireSilentMode(snap);
   updateBottomMessageAndPresetUI(currentMode, snap);
+  updateInspectorLifecycle(currentMode, snap);
   updateLevelBars(currentMode, snap);
   updateADSRBars(snap);
   updateCalibrationUI(currentMode, snap);
