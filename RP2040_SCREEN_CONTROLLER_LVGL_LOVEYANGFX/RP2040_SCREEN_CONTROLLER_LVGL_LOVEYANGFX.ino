@@ -308,60 +308,59 @@ static void SCREEN_HOT(updateLevelBars)(ScreenMode mode, const Core1Snapshot &sn
   if (snap.levelBars == 0 && mode != ScreenMode::Silent) return;
 
   if (mode == ScreenMode::Silent) {
-    lv_bar_set_value(ui_OSC1Level, snap.osc1Level, LV_ANIM_ON);
-    lv_bar_set_value(ui_OSC2Level, snap.osc2Level, LV_ANIM_ON);
-    lv_bar_set_value(ui_SUBLevel, snap.subLevel, LV_ANIM_ON);
+    lv_bar_set_value(ui_OSC1Level, snap.osc1Level, LV_ANIM_OFF);
+    lv_bar_set_value(ui_OSC2Level, snap.osc2Level, LV_ANIM_OFF);
+    lv_bar_set_value(ui_SUBLevel, snap.subLevel, LV_ANIM_OFF);
   } else {
-    if (snap.levelBars & LEVEL_BAR_OSC1) lv_bar_set_value(ui_OSC1Level, snap.osc1Level, LV_ANIM_ON);
-    if (snap.levelBars & LEVEL_BAR_OSC2) lv_bar_set_value(ui_OSC2Level, snap.osc2Level, LV_ANIM_ON);
-    if (snap.levelBars & LEVEL_BAR_SUB) lv_bar_set_value(ui_SUBLevel, snap.subLevel, LV_ANIM_ON);
+    if (snap.levelBars & LEVEL_BAR_OSC1) lv_bar_set_value(ui_OSC1Level, snap.osc1Level, LV_ANIM_OFF);
+    if (snap.levelBars & LEVEL_BAR_OSC2) lv_bar_set_value(ui_OSC2Level, snap.osc2Level, LV_ANIM_OFF);
+    if (snap.levelBars & LEVEL_BAR_SUB) lv_bar_set_value(ui_SUBLevel, snap.subLevel, LV_ANIM_OFF);
   }
 }
 
 // Lock-Free ADSR Bars
 static void SCREEN_HOT(updateADSRBars)(const Core1Snapshot &snap) {
   if (snap.hasADSR1) {
-    lv_bar_set_value(ui_ADSR1AttackBar, (snap.a1a >> 5), LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR1DecayBar, (snap.a1d >> 5), LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR1SustainBar, (snap.a1s >> 5), LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR1ReleaseBar, (snap.a1r >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR1AttackBar, (snap.a1a >> 5), LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR1DecayBar, (snap.a1d >> 5), LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR1SustainBar, (snap.a1s >> 5), LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR1ReleaseBar, (snap.a1r >> 5), LV_ANIM_OFF);
   }
   if (snap.hasADSR2) {
-    lv_bar_set_value(ui_ADSR2AttackBar, (snap.a2a >> 5), LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR2DecayBar, (snap.a2d >> 5), LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR2SustainBar, (snap.a2s >> 5), LV_ANIM_ON);
-    lv_bar_set_value(ui_ADSR2ReleaseBar, (snap.a2r >> 5), LV_ANIM_ON);
+    lv_bar_set_value(ui_ADSR2AttackBar, (snap.a2a >> 5), LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR2DecayBar, (snap.a2d >> 5), LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR2SustainBar, (snap.a2s >> 5), LV_ANIM_OFF);
+    lv_bar_set_value(ui_ADSR2ReleaseBar, (snap.a2r >> 5), LV_ANIM_OFF);
   }
 }
 
-// FIXED: Lock-Free Calibration UI Router
+// Lock-Free Calibration UI Router
 static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot &snap) {
   // 1. Calibration Menu Tab Scrolling (Mode 7)
   if (mode == ScreenMode::CalibrationMenu) {
     if (snap.hasParamChange && snap.paramNumber == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
-      lv_tabview_set_active(ui_calibrationTabs, snap.paramValue, LV_ANIM_ON);
+      lv_tabview_set_active(ui_calibrationTabs, snap.paramValue, LV_ANIM_OFF); // <--- FIXED: Must be OFF
     }
     return;
   }
 
   // 2. Manual Calibration Real-Time Tuner & Stage Updates (Mode 8)
   if (mode == ScreenMode::ManualCalibration) {
-    // Redraw whenever stage, gap, offset, 440, or PW change over serial
     if (snap.calStage != lastRenderedStage ||
-        snap.calGap   != lastRenderedGap   ||
-        snap.calOffset != lastRenderedOff   ||
-        snap.calAmp440 != lastRendered440  ||
-        snap.calPwCenter != lastRenderedPw ||
-        snap.hasParamChange) {
-      
-      lastRenderedStage = snap.calStage;
-      lastRenderedGap   = snap.calGap;
-      lastRenderedOff   = snap.calOffset;
-      lastRendered440  = snap.calAmp440;
-      lastRenderedPw   = snap.calPwCenter;
+      snap.calGap   != lastRenderedGap   ||
+      snap.calOffset != lastRenderedOff   ||
+      snap.calAmp440 != lastRendered440  ||
+      snap.calPwCenter != lastRenderedPw ||
+      snap.hasParamChange) {
 
-      drawManualCalibration(snap);
-    }
+      lastRenderedStage = snap.calStage;
+    lastRenderedGap   = snap.calGap;
+    lastRenderedOff   = snap.calOffset;
+    lastRendered440  = snap.calAmp440;
+    lastRenderedPw   = snap.calPwCenter;
+
+    drawManualCalibration(snap);
+      }
   }
 }
 

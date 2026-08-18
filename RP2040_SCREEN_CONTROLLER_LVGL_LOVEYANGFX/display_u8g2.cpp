@@ -62,6 +62,8 @@ static uint8_t  lastO1 = 255, lastO2 = 255, lastSub = 255;
 static uint16_t lastA1 = 65535, lastD1 = 65535, lastS1 = 65535, lastR1 = 65535;
 static uint16_t lastA2 = 65535, lastD2 = 65535, lastS2 = 65535, lastR2 = 65535;
 
+static bool lastToastActive = false;
+
 void mark_u8g2_dirty() {
   oledDirty = true;
 }
@@ -327,16 +329,9 @@ static void draw_view_save_name(const char* pName, uint8_t pChar) {
 // ---------------------------------------------------------------------------
 // Core 0 Non-Blocking Event-Driven Refresh
 // ---------------------------------------------------------------------------
+// Core 0 Non-Blocking Event-Driven Refresh
 void update_u8g2_core0() {
   uint32_t now = millis();
-
-  // Handle toast timeout
-  if (paramChangeTimerFlag) {
-    if (now - paramChangeLastMillis >= paramHideTimeMillis) {
-      paramChangeTimerFlag = false;
-      oledDirty = true;
-    }
-  }
 
   // Rate limiter
   if (now - lastOledRefreshMillis < MIN_OLED_INTERVAL_MS) {
@@ -397,76 +392,71 @@ void update_u8g2_core0() {
 
   // Detect state changes to trigger redraw
   if (mode != lastScreenMode ||
-      pNum != lastPresetNum ||
-      currentCalMenuIndex != lastCalMenuIndex ||
-      stage != lastCalStage ||
-      gap != lastCalGap ||
-      o1 != lastO1 || o2 != lastO2 || sub != lastSub ||
-      a1 != lastA1 || d1 != lastD1 || s1 != lastS1 || r1 != lastR1 ||
-      a2 != lastA2 || d2 != lastD2 || s2 != lastS2 || r2 != lastR2) {
+    pNum != lastPresetNum ||
+    currentCalMenuIndex != lastCalMenuIndex ||
+    stage != lastCalStage ||
+    gap != lastCalGap ||
+    o1 != lastO1 || o2 != lastO2 || sub != lastSub ||
+    a1 != lastA1 || d1 != lastD1 || s1 != lastS1 || r1 != lastR1 ||
+    a2 != lastA2 || d2 != lastD2 || s2 != lastS2 || r2 != lastR2 ||
+    toastActive != lastToastActive) {
     oledDirty = true;
-  }
+    }
 
-  if (!oledDirty) {
-    return;
-  }
+    if (!oledDirty) {
+      return;
+    }
 
-  // Update tracker variables
-  lastScreenMode = mode;
-  lastPresetNum = pNum;
-  lastCalMenuIndex = currentCalMenuIndex;
-  lastCalStage = stage;
-  lastCalGap = gap;
-  lastO1 = o1; lastO2 = o2; lastSub = sub;
-  lastA1 = a1; lastD1 = d1; lastS1 = s1; lastR1 = r1;
-  lastA2 = a2; lastD2 = d2; lastS2 = s2; lastR2 = r2;
-  lastOledRefreshMillis = now;
-  oledDirty = false;
+    // Update tracker variables
+    lastScreenMode = mode;
+    lastPresetNum = pNum;
+    lastCalMenuIndex = currentCalMenuIndex;
+    lastCalStage = stage;
+    lastCalGap = gap;
+    lastO1 = o1; lastO2 = o2; lastSub = sub;
+    lastA1 = a1; lastD1 = d1; lastS1 = s1; lastR1 = r1;
+    lastA2 = a2; lastD2 = d2; lastS2 = s2; lastR2 = r2;
+    lastToastActive = toastActive;
+    lastOledRefreshMillis = now;
+    oledDirty = false;
 
-  // Flush UART before rendering
-  serial_read_n();
+    if (mode == ScreenMode::Silent) {
+      u8g2.clearBuffer();
+      u8g2.sendBuffer();
+      return;
+    }
 
-  if (mode == ScreenMode::Silent) {
     u8g2.clearBuffer();
+
+    switch (mode) {
+      case ScreenMode::CalibrationMenu:
+        draw_view_cal_menu(currentCalMenuIndex, topo);
+        break;
+
+      case ScreenMode::ManualCalibration:
+        draw_view_manual_cal(topo, stage, gap, off, a440, pw);
+        break;
+
+      case ScreenMode::SaveSelectPreset:
+        draw_view_save_select(pNum, pName);
+        break;
+
+      case ScreenMode::SaveSetName:
+        draw_view_save_name(pName, pChar);
+        break;
+
+      case ScreenMode::SaveCompleted:
+        u8g2.drawFrame(10, 10, 108, 44);
+        u8g2.setFont(u8g2_font_7x14B_tr);
+        u8g2.drawStr(18, 28, "PRESET SAVED!");
+        break;
+
+      case ScreenMode::PresetScroll:
+      case ScreenMode::LoadSaveExit:
+      default:
+        draw_view_preset(pNum, pName, o1, o2, sub, a1, d1, s1, r1, a2, d2, s2, r2, toastActive, pToastName, pToastVal, topo);
+        break;
+    }
+
     u8g2.sendBuffer();
-    serial_read_n();
-    return;
-  }
-
-  u8g2.clearBuffer();
-
-  switch (mode) {
-    case ScreenMode::CalibrationMenu:
-      draw_view_cal_menu(currentCalMenuIndex, topo);
-      break;
-
-    case ScreenMode::ManualCalibration:
-      draw_view_manual_cal(topo, stage, gap, off, a440, pw);
-      break;
-
-    case ScreenMode::SaveSelectPreset:
-      draw_view_save_select(pNum, pName);
-      break;
-
-    case ScreenMode::SaveSetName:
-      draw_view_save_name(pName, pChar);
-      break;
-
-    case ScreenMode::SaveCompleted:
-      u8g2.drawFrame(10, 10, 108, 44);
-      u8g2.setFont(u8g2_font_7x14B_tr);
-      u8g2.drawStr(18, 28, "PRESET SAVED!");
-      break;
-
-    case ScreenMode::PresetScroll:
-    case ScreenMode::LoadSaveExit:
-    default:
-      draw_view_preset(pNum, pName, o1, o2, sub, a1, d1, s1, r1, a2, d2, s2, r2, toastActive, pToastName, pToastVal, topo);
-      break;
-  }
-
-  u8g2.sendBuffer();
-
-  // Flush UART immediately after rendering
-  serial_read_n();
 }
