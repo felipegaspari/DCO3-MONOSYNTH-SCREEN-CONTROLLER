@@ -1,19 +1,22 @@
+#include <lvgl.h>
+#include "src/ui/ui.h"
 #include "params_def.h"
 #include "param_router.h"
 #include "sram_hot.h"
+#include "displayParams.h"
 #include "display_u8g2.h"
 
 // Definitions for display/model shared state
 uint16_t paramHideTimeMillis = 3000;
-bool paramChangeTimerFlag = false;
+bool     paramChangeTimerFlag = false;
 
-volatile uint8_t calibrationMenuIndex = 0;
-volatile int8_t offset = 0;
+volatile int8_t   offset = 0;
 volatile uint16_t ampComp440Display = 0;
 volatile uint16_t calPwCenterDisplay = 0;
-volatile uint8_t manualCalibrationOSCN = 0;
-volatile uint8_t manualCalibrationStage = 0;
-volatile int32_t calibrationGap = 0;
+volatile uint8_t  manualCalibrationOSCN = 0;
+volatile uint8_t  manualCalibrationStage = 0;
+volatile int32_t  calibrationGap = 0;
+volatile uint8_t  calibrationMenuIndex = 0;
 
 volatile CalTopology screenCalTopology = SCREEN_CAL_TOPOLOGY_DEFAULT;
 
@@ -41,6 +44,17 @@ volatile InspectorType activeInspector = InspectorType::None;
 volatile uint32_t inspectorLastActivityMillis = 0;
 volatile bool inspectorActiveFlag = false;
 
+// ---------------------------------------------------------------------------
+// 4-Sample Moving Average Filter (MUST BE DEFINED BEFORE apply_param_* FUNCTIONS)
+// ---------------------------------------------------------------------------
+static int32_t gapSamples[4]  = {0, 0, 0, 0};
+static uint8_t gapSampleIdx   = 0;
+static uint8_t gapSampleCount = 0;
+
+static void reset_gap_filter() {
+  gapSampleCount = 0;
+  gapSampleIdx   = 0;
+}
 
 // ---------------------------------------------------------------------------
 // TFT LVGL Manual Calibration Gap Tracking Bar (Parented to Top-Level Screen)
@@ -193,6 +207,10 @@ static void apply_param_manual_calibration_flag(int32_t v) {
   signalFlag = true;
 }
 
+
+// ---------------------------------------------------------------------------
+// Router-backed "apply" functions
+// ---------------------------------------------------------------------------
 static void apply_param_manual_calibration_stage(int32_t v) {
   const CalTopology topology = screen_cal_topology();
   const int32_t stageMax     = (int32_t)screen_cal_stage_max(topology);
@@ -202,12 +220,26 @@ static void apply_param_manual_calibration_stage(int32_t v) {
   manualCalibrationStage = (uint8_t)stage;
   manualCalibrationOSCN  = screen_cal_stage_to_osc(topology, manualCalibrationStage);
 
-  reset_gap_filter();
+  reset_gap_filter(); // Now declared above, compiles cleanly!
 }
 
-static void apply_param_manual_calibration_offset(int32_t v) {
-  offset = (int8_t)v;
+static void apply_param_gap_from_dco(int32_t v) {
+  gapSamples[gapSampleIdx] = v;
+  gapSampleIdx = (gapSampleIdx + 1) & 0x03;
+  if (gapSampleCount < 4) gapSampleCount++;
+
+  int64_t sum = 0;
+  for (uint8_t i = 0; i < gapSampleCount; ++i) {
+    sum += gapSamples[i];
+  }
+
+  calibrationGap = (int32_t)(sum / gapSampleCount);
 }
+// -----------------------------------------------------------------------------
+
+  static void apply_param_manual_calibration_offset(int32_t v) {
+    offset = (int8_t)v;
+  }
 
 static void apply_param_amp_comp_440(int32_t v) {
   if (v < 0) v = 0;
@@ -218,19 +250,6 @@ static void apply_param_cal_pw_center(int32_t v) {
   if (v < 0) v = 0;
   if (v > (int32_t)CAL_PW_CENTER_MAX) v = (int32_t)CAL_PW_CENTER_MAX;
   calPwCenterDisplay = (uint16_t)v;
-}
-
-static void apply_param_gap_from_dco(int32_t v) {
-  gapSamples[gapSampleIdx] = v;
-  gapSampleIdx = (gapSampleIdx + 1) & 0x03; // Modulo 4 ring buffer
-  if (gapSampleCount < 4) gapSampleCount++;
-
-  int64_t sum = 0;
-  for (uint8_t i = 0; i < gapSampleCount; ++i) {
-    sum += gapSamples[i];
-  }
-
-  calibrationGap = (int32_t)(sum / gapSampleCount);
 }
 
 static void apply_param_ui_calibration_dismiss(int32_t) {

@@ -91,7 +91,7 @@ void init_u8g2() {
   gpio_set_dir(OLED_DC_PIN, GPIO_OUT);
   gpio_put(OLED_DC_PIN, 1);
 
-  spi_init(spi1, 16000000);
+  spi_init(spi1, 8000000);
 
   u8g2.initDisplay();
   u8g2.setPowerSave(0);

@@ -4,6 +4,7 @@
 #include "params_def.h"
 #include "screen_mode.h"
 #include "screen_target.h"
+#include <lvgl.h>
 
 // Bits of levelBarFlag: pending level-bar widget updates.
 static constexpr uint8_t LEVEL_BAR_OSC1 = 0x01;
@@ -105,5 +106,7 @@ void drawManualCalibration(const Core1Snapshot& snap);
 void setDisplayParam();
 void applyNavParam(uint8_t id, int32_t value);
 InspectorType get_param_inspector_type(ParamId id);
+
+extern lv_obj_t* ui_calGapTrack;
 
 #endif  // __DISPLAY_PARAMS_H__
