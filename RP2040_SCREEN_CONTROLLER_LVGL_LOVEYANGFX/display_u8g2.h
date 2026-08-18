@@ -7,14 +7,18 @@
 #include "screen_target.h"
 #include "Serial.h"
 
-// Hardware Pin assignments on SPI1 for Raspberry Pi Pico
+// Hardware Pin assignments strictly on SPI1 for RP2040
 #define OLED_SCK_PIN   14
 #define OLED_MOSI_PIN  15
 #define OLED_CS_PIN    16
 #define OLED_DC_PIN    17
-#define OLED_RST_PIN   U8X8_PIN_NONE
 
-extern U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2;
+class U8G2_SSD1309_PICO_SPI1 : public U8G2 {
+public:
+  U8G2_SSD1309_PICO_SPI1(const u8g2_cb_t *rotation = U8G2_R0);
+};
+
+extern U8G2_SSD1309_PICO_SPI1 u8g2;
 
 void init_u8g2();
 void update_u8g2_core0();

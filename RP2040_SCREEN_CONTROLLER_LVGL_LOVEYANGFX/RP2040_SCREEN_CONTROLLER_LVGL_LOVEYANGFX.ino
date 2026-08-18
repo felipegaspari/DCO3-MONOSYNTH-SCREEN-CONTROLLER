@@ -19,7 +19,6 @@
 #include "Serial.h"
 #include "displayParams.h"
 
-
 //////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////  SSD1309 / U8g2 Library - Section
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -34,7 +33,7 @@ static const uint16_t screenWidth = 480;
 static const uint16_t screenHeight = 320;
 
 // Double buffer: 1/8th screen per buffer (38.4KB each in SRAM)
-enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 16 };
+enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 8 };
 static lv_color_t buf1[SCREENBUFFER_SIZE_PIXELS];
 static lv_color_t buf2[SCREENBUFFER_SIZE_PIXELS];
 
@@ -61,12 +60,17 @@ static ScreenMode currentMode = ScreenMode::PresetScroll;
 static const uint32_t silentModeTimeoutMillis = 150;  // Fast 150ms timeout
 static uint32_t silentModeEnteredMillis = 0;
 
+// Tracker for manual calibration redraws
+static uint8_t lastRenderedStage = 255;
+static int32_t lastRenderedGap   = -999999;
+static int8_t  lastRenderedOff   = 0;
+static uint16_t lastRendered440  = 0;
+static uint16_t lastRenderedPw   = 0;
+
 /// LOAD FONT TO SRAM
-// 1. Declare an SRAM buffer for your font bitmap (adjust size to fit your font, e.g. 16KB)
 static uint8_t ram_font_bitmap[16384];  // 16 KB SRAM buffer
 static lv_font_fmt_txt_dsc_t ram_font_dsc;
 static lv_font_t ram_big_font;
-
 
 void setup() {
   Serial.begin(2000000);
@@ -106,13 +110,9 @@ void setup1() {
   lv_sysmon_performance_pause(disp);
 #endif
 
-  //load_big_font_to_sram(const lv_font_t *flash_font, size_t bitmap_size)
   ui_init();
 
   lv_obj_set_style_text_opa(ui_PresetN, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-  // lv_obj_set_style_text_opa(ui_PresetNShadow, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-  // ADD THIS LINE TO HIDE THE SHADOW:
   lv_obj_add_flag(ui_PresetNShadow, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -164,21 +164,17 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   // ADSR 1 & 2
   snap.hasADSR1 = updateADSR1Flag;
   updateADSR1Flag = false;
-  if (snap.hasADSR1) {
-    snap.a1a = ADSR1Attack;
-    snap.a1d = ADSR1Decay;
-    snap.a1s = ADSR1Sustain;
-    snap.a1r = ADSR1Release;
-  }
+  snap.a1a = ADSR1Attack;
+  snap.a1d = ADSR1Decay;
+  snap.a1s = ADSR1Sustain;
+  snap.a1r = ADSR1Release;
 
   snap.hasADSR2 = updateADSR2Flag;
   updateADSR2Flag = false;
-  if (snap.hasADSR2) {
-    snap.a2a = ADSR2Attack;
-    snap.a2d = ADSR2Decay;
-    snap.a2s = ADSR2Sustain;
-    snap.a2r = ADSR2Release;
-  }
+  snap.a2a = ADSR2Attack;
+  snap.a2d = ADSR2Decay;
+  snap.a2s = ADSR2Sustain;
+  snap.a2r = ADSR2Release;
 
   // Unconditionally copy calibration values so snap is always 100% valid
   snap.calOffset = offset;
@@ -268,7 +264,6 @@ static void SCREEN_HOT(expireSilentMode)(const Core1Snapshot &snap) {
   if (currentMode != ScreenMode::Silent) return;
   if (millis() - silentModeEnteredMillis < silentModeTimeoutMillis) return;
 
-  // Sync state back to shared memory so Core 0 knows silence ended
   screen_state_lock();
   if (serialSignal == screen_mode_raw(ScreenMode::Silent)) {
     serialSignal = screen_mode_raw(ScreenMode::PresetScroll);
@@ -301,7 +296,7 @@ static void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode, const Co
     lv_obj_add_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
     draw_preset_scroll_1(mode, snap.presetNum, snap.presetName, snap.presetChar);
     paramChangeTimerFlag = false;
-    lv_refr_now(NULL);  // Instant hardware refresh
+    lv_refr_now(NULL);
   } else if (snap.hasParamChange && snap.paramName && snap.paramName[0] != '\0') {
     draw_param_1(snap.paramName, snap.paramValue);
   }
@@ -309,6 +304,7 @@ static void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode, const Co
 
 // Lock-Free Level Bars
 static void SCREEN_HOT(updateLevelBars)(ScreenMode mode, const Core1Snapshot &snap) {
+  if (static_cast<uint8_t>(mode) > static_cast<uint8_t>(ScreenMode::SaveCompleted) && mode != ScreenMode::Silent) return;
   if (snap.levelBars == 0 && mode != ScreenMode::Silent) return;
 
   if (mode == ScreenMode::Silent) {
@@ -322,7 +318,7 @@ static void SCREEN_HOT(updateLevelBars)(ScreenMode mode, const Core1Snapshot &sn
   }
 }
 
-// Lock-Free ADSR Bars (uses fast bitshift >> 5 instead of float multiplication)
+// Lock-Free ADSR Bars
 static void SCREEN_HOT(updateADSRBars)(const Core1Snapshot &snap) {
   if (snap.hasADSR1) {
     lv_bar_set_value(ui_ADSR1AttackBar, (snap.a1a >> 5), LV_ANIM_ON);
@@ -338,17 +334,34 @@ static void SCREEN_HOT(updateADSRBars)(const Core1Snapshot &snap) {
   }
 }
 
-// Lock-Free Calibration UI
+// FIXED: Lock-Free Calibration UI Router
 static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot &snap) {
-  if (mode != ScreenMode::CalibrationMenu && mode != ScreenMode::ManualCalibration) return;
-  if (!snap.hasParamChange) return;
-
+  // 1. Calibration Menu Tab Scrolling (Mode 7)
   if (mode == ScreenMode::CalibrationMenu) {
-    if (snap.paramNumber == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
+    if (snap.hasParamChange && snap.paramNumber == static_cast<uint8_t>(ParamId::PARAM_UI_MENU_POSITION)) {
       lv_tabview_set_active(ui_calibrationTabs, snap.paramValue, LV_ANIM_ON);
     }
-  } else {
-    drawManualCalibration(snap);
+    return;
+  }
+
+  // 2. Manual Calibration Real-Time Tuner & Stage Updates (Mode 8)
+  if (mode == ScreenMode::ManualCalibration) {
+    // Redraw whenever stage, gap, offset, 440, or PW change over serial
+    if (snap.calStage != lastRenderedStage ||
+        snap.calGap   != lastRenderedGap   ||
+        snap.calOffset != lastRenderedOff   ||
+        snap.calAmp440 != lastRendered440  ||
+        snap.calPwCenter != lastRenderedPw ||
+        snap.hasParamChange) {
+      
+      lastRenderedStage = snap.calStage;
+      lastRenderedGap   = snap.calGap;
+      lastRenderedOff   = snap.calOffset;
+      lastRendered440  = snap.calAmp440;
+      lastRenderedPw   = snap.calPwCenter;
+
+      drawManualCalibration(snap);
+    }
   }
 }
 
@@ -356,10 +369,8 @@ static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot
 void SCREEN_HOT(loop1)(void) {
   Core1Snapshot snap;
 
-  // 1. Capture ALL shared data in ONE atomic lock (< 1 microsecond)
   captureCore1Snapshot(snap);
 
-  // 2. Perform all UI updates completely lock-free
   handleScreenModeChange(snap);
   expireSilentMode(snap);
   updateBottomMessageAndPresetUI(currentMode, snap);
@@ -367,7 +378,6 @@ void SCREEN_HOT(loop1)(void) {
   updateADSRBars(snap);
   updateCalibrationUI(currentMode, snap);
 
-  // 3. Render and sleep efficiently
   uint32_t time_till_next = lv_timer_handler();
   if (time_till_next > 5) time_till_next = 5;
   if (time_till_next == 0) time_till_next = 1;
@@ -376,30 +386,20 @@ void SCREEN_HOT(loop1)(void) {
 
 void load_big_font_to_sram(const lv_font_t *flash_font, size_t bitmap_size) {
   const lv_font_fmt_txt_dsc_t *flash_dsc = (const lv_font_fmt_txt_dsc_t *)flash_font->dsc;
-
-  // Copy font bitmap data from Flash to SRAM
   memcpy(ram_font_bitmap, flash_dsc->glyph_bitmap, bitmap_size);
-
-  // Clone the descriptor and point its bitmap pointer to SRAM
   ram_font_dsc = *flash_dsc;
   ram_font_dsc.glyph_bitmap = ram_font_bitmap;
-
-  // Clone the font and point to our new RAM descriptor
   ram_big_font = *flash_font;
   ram_big_font.dsc = &ram_font_dsc;
 
-  // Re-assign the new SRAM font to your big preset number labels
   lv_obj_set_style_text_font(ui_PresetN, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui_PresetNShadow, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui_PresetNNew, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_font(ui_PresetNNewShadow, &ram_big_font, LV_PART_MAIN | LV_STATE_DEFAULT);
-  ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Force solid opacity on drop shadow to save CPU rasterization cycles
   lv_obj_set_style_text_opa(ui_PresetNShadow, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_opa(ui_PresetNShadow, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-  // Textarea cursor animations
   lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_CURSOR | LV_STATE_DEFAULT);
   lv_obj_set_style_anim_time(ui_PresetNewName, 140, LV_PART_MAIN | LV_STATE_FOCUSED);
