@@ -51,7 +51,7 @@ volatile uint32_t inspectorLastActivityMillis = 0;
 volatile bool inspectorActiveFlag = false;
 
 // ---------------------------------------------------------------------------
-// 4-Sample Moving Average Filter (MUST BE DEFINED BEFORE apply_param_* FUNCTIONS)
+// 4-Sample Moving Average Filter
 // ---------------------------------------------------------------------------
 static int32_t gapSamples[4]  = {0, 0, 0, 0};
 static uint8_t gapSampleIdx   = 0;
@@ -63,7 +63,7 @@ static void reset_gap_filter() {
 }
 
 // ---------------------------------------------------------------------------
-// TFT LVGL Manual Calibration Gap Tracking Bar (Parented to Top-Level Screen)
+// TFT LVGL Manual Calibration Gap Tracking Bar
 // ---------------------------------------------------------------------------
 lv_obj_t* ui_calGapTrack  = nullptr;
 static lv_obj_t* ui_calGapCenter = nullptr;
@@ -72,22 +72,19 @@ static lv_obj_t* ui_calGapCursor = nullptr;
 static void init_tft_cal_gap_bar(lv_obj_t* screenParent) {
   if (ui_calGapTrack != nullptr || screenParent == nullptr) return;
 
-  // 1. Full-Width 480x54 px Track Attached to ui_MANUALCALIBRATION Screen
   ui_calGapTrack = lv_obj_create(screenParent);
   lv_obj_remove_style_all(ui_calGapTrack);
   lv_obj_set_size(ui_calGapTrack, 480, 54);
-  lv_obj_align(ui_calGapTrack, LV_ALIGN_BOTTOM_MID, 0, 0); // Flush against LCD bottom edge
+  lv_obj_align(ui_calGapTrack, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_color(ui_calGapTrack, lv_color_hex(0x101010), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(ui_calGapTrack, LV_OPA_COVER, LV_PART_MAIN);
 
-  // Orange accent top border
   lv_obj_set_style_border_color(ui_calGapTrack, lv_color_hex(0xFF7700), LV_PART_MAIN);
   lv_obj_set_style_border_width(ui_calGapTrack, 2, LV_PART_MAIN);
   lv_obj_set_style_border_side(ui_calGapTrack, LV_BORDER_SIDE_TOP, LV_PART_MAIN);
   lv_obj_set_style_radius(ui_calGapTrack, 0, LV_PART_MAIN);
   lv_obj_clear_flag(ui_calGapTrack, LV_OBJ_FLAG_SCROLLABLE);
 
-  // 2. Fixed Center Zero Marker (Orange)
   ui_calGapCenter = lv_obj_create(ui_calGapTrack);
   lv_obj_remove_style_all(ui_calGapCenter);
   lv_obj_set_size(ui_calGapCenter, 3, 48);
@@ -95,7 +92,6 @@ static void init_tft_cal_gap_bar(lv_obj_t* screenParent) {
   lv_obj_set_style_bg_color(ui_calGapCenter, lv_color_hex(0xFF7700), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(ui_calGapCenter, LV_OPA_COVER, LV_PART_MAIN);
 
-  // 3. Tall Moving Needle / Cursor (12x44 px)
   ui_calGapCursor = lv_obj_create(ui_calGapTrack);
   lv_obj_remove_style_all(ui_calGapCursor);
   lv_obj_set_size(ui_calGapCursor, 12, 44);
@@ -136,7 +132,6 @@ void drawManualCalibration(const Core1Snapshot &snap) {
   lv_label_set_text(ui_waveform, waveformText);
   lv_label_set_text(ui_waveformShadow, waveformText);
 
-  // --- Dynamic Gap Tuning Bar Parented Directly to Screen ---
   if (ui_calGapTrack == nullptr) {
     init_tft_cal_gap_bar(ui_MANUALCALIBRATION);
   }
@@ -152,24 +147,22 @@ void drawManualCalibration(const Core1Snapshot &snap) {
     if (clampedGap < -limit) clampedGap = -limit;
     if (clampedGap > limit)  clampedGap = limit;
 
-    // Full 480px width allows ±228px max travel from center
     const int32_t maxTravel = 228;
     int32_t xOffset = (clampedGap * maxTravel) / limit;
 
     lv_obj_align(ui_calGapCursor, LV_ALIGN_CENTER, xOffset, 0);
 
-    // Color-coded needle feedback
     int32_t absGap = (clampedGap < 0) ? -clampedGap : clampedGap;
     if (absGap <= 2) {
-      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0x00FF88), LV_PART_MAIN); // Locked Green
+      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0x00FF88), LV_PART_MAIN);
     } else if (absGap < (limit / 4)) {
-      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0xFFCC00), LV_PART_MAIN); // Approaching Yellow
+      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0xFFCC00), LV_PART_MAIN);
     } else {
-      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0xFF3344), LV_PART_MAIN); // Far Off Red
+      lv_obj_set_style_bg_color(ui_calGapCursor, lv_color_hex(0xFF3344), LV_PART_MAIN);
     }
   }
 }
-// Mixer levels -> bar values (with change check to avoid redundant work)
+
 void apply_param_osc1_level(int32_t v) {
   if (OSC1Level != (uint8_t)v) {
     OSC1Level = (uint8_t)v;
@@ -213,10 +206,6 @@ static void apply_param_manual_calibration_flag(int32_t v) {
   signalFlag = true;
 }
 
-
-// ---------------------------------------------------------------------------
-// Router-backed "apply" functions
-// ---------------------------------------------------------------------------
 static void apply_param_manual_calibration_stage(int32_t v) {
   const CalTopology topology = screen_cal_topology();
   const int32_t stageMax     = (int32_t)screen_cal_stage_max(topology);
@@ -226,7 +215,7 @@ static void apply_param_manual_calibration_stage(int32_t v) {
   manualCalibrationStage = (uint8_t)stage;
   manualCalibrationOSCN  = screen_cal_stage_to_osc(topology, manualCalibrationStage);
 
-  reset_gap_filter(); // Now declared above, compiles cleanly!
+  reset_gap_filter();
 }
 
 static void apply_param_gap_from_dco(int32_t v) {
@@ -241,11 +230,10 @@ static void apply_param_gap_from_dco(int32_t v) {
 
   calibrationGap = (int32_t)(sum / gapSampleCount);
 }
-// -----------------------------------------------------------------------------
 
-  static void apply_param_manual_calibration_offset(int32_t v) {
-    offset = (int8_t)v;
-  }
+static void apply_param_manual_calibration_offset(int32_t v) {
+  offset = (int8_t)v;
+}
 
 static void apply_param_amp_comp_440(int32_t v) {
   if (v < 0) v = 0;
@@ -281,7 +269,7 @@ static void apply_param_ui_menu_position(int32_t v) {
 void screen_cache_param(uint8_t id, int32_t val) {
   const ParamId pId = static_cast<ParamId>(id);
 
-  // 1. Mod Matrix Range (Slots 0..7: Source, Dest, Depth)
+  // 1. Mod Matrix Range (Slots 0..7)
   if (id >= static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT0_SOURCE) &&
       id <= static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT7_DEPTH)) {
     uint8_t offset  = id - static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT0_SOURCE);
@@ -295,7 +283,7 @@ void screen_cache_param(uint8_t id, int32_t val) {
     return;
   }
 
-  // 2. Discrete Parameter Mapping
+  // 2. Discrete Parameters, Calibration & UI Signals
   switch (pId) {
     // --- Oscillators & Voice (PatchOscBlock) ---
     case ParamId::PARAM_OSC1_SAW_ENABLE:
@@ -412,29 +400,40 @@ void screen_cache_param(uint8_t id, int32_t val) {
       if (val) currentMixState.misc_flags |= (1 << 3); else currentMixState.misc_flags &= ~(1 << 3);
       break;
 
+    // --- UI-Specific Parameters for OLED Filter HUD ---
+    case ParamId::PARAM_UI_CUTOFF:       guiState.cutoff = val; break;
+    case ParamId::PARAM_UI_RESONANCE:    guiState.resonance = val; break;
+    case ParamId::PARAM_UI_ADSR2_TO_VCF: guiState.env2vcf = val; break;
+
+    // --- Calibration Models & UI Navigation ---
+    case ParamId::PARAM_CALIBRATION_FLAG:        apply_param_calibration_flag(val); break;
+    case ParamId::PARAM_MANUAL_CALIBRATION_FLAG: apply_param_manual_calibration_flag(val); break;
+    case ParamId::PARAM_MANUAL_CALIBRATION_STAGE:apply_param_manual_calibration_stage(val); break;
+    case ParamId::PARAM_MANUAL_CALIBRATION_OFFSET: apply_param_manual_calibration_offset(val); break;
+    case ParamId::PARAM_AMP_COMP_440:            apply_param_amp_comp_440(val); break;
+    case ParamId::PARAM_CAL_PW_CENTER:           apply_param_cal_pw_center(val); break;
+    case ParamId::PARAM_GAP_FROM_DCO:            apply_param_gap_from_dco(val); break;
+    case ParamId::PARAM_UI_MENU_POSITION:        apply_param_ui_menu_position(val); break;
+    case ParamId::PARAM_UI_CALIBRATION_DISMISS:  apply_param_ui_calibration_dismiss(val); break;
+    case ParamId::PARAM_UI_CALIBRATION_MENU_MODE:apply_param_ui_calibration_menu_mode(val); break;
+
     default:
       break;
   }
+
+  // Only trigger the Inspector if we are NOT in Silent mode (e.g. not loading presets)
+  if (serialSignal != screen_mode_raw(ScreenMode::Silent)) {
+    InspectorType insp = get_param_inspector_type(pId);
+    if (insp != InspectorType::None) {
+      trigger_oled_inspector(insp);
+
+      // Also forward to Core 1 TFT snapshot state
+      activeInspector             = insp;
+      inspectorLastActivityMillis = millis();
+      inspectorActiveFlag         = true;
+    }
+  }
 }
-static const ScreenParamDescriptor screenParamTable[] = {
-  { ParamId::PARAM_OSC1_LEVEL, apply_param_osc1_level },
-  { ParamId::PARAM_OSC2_LEVEL, apply_param_osc2_level },
-  { ParamId::PARAM_OSC3_LEVEL, apply_param_osc3_level },
-  { ParamId::PARAM_SUB_LEVEL, apply_param_sub_level },
-  { ParamId::PARAM_CALIBRATION_FLAG, apply_param_calibration_flag },
-  { ParamId::PARAM_MANUAL_CALIBRATION_FLAG, apply_param_manual_calibration_flag },
-  { ParamId::PARAM_MANUAL_CALIBRATION_STAGE, apply_param_manual_calibration_stage },
-  { ParamId::PARAM_MANUAL_CALIBRATION_OFFSET, apply_param_manual_calibration_offset },
-  { ParamId::PARAM_AMP_COMP_440, apply_param_amp_comp_440 },
-  { ParamId::PARAM_CAL_PW_CENTER, apply_param_cal_pw_center },
-  { ParamId::PARAM_GAP_FROM_DCO, apply_param_gap_from_dco },
-  { ParamId::PARAM_UI_MENU_POSITION, apply_param_ui_menu_position },
-  { ParamId::PARAM_UI_CALIBRATION_DISMISS, apply_param_ui_calibration_dismiss },
-  { ParamId::PARAM_UI_CALIBRATION_MENU_MODE, apply_param_ui_calibration_menu_mode },
-};
-
-
-static const size_t screenParamTableSize = sizeof(screenParamTable) / sizeof(screenParamTable[0]);
 
 // Lock-Free Parameter Toast Draw
 void draw_param_1(const char* name, int32_t value) {
@@ -479,48 +478,18 @@ void SCREEN_HOT(draw_preset_scroll_1)(ScreenMode mode, uint8_t num, const char* 
   }
 }
 
-static void applyParamToModelAndSignals() {
-  param_router_apply<ScreenParamValueT>(
-    screenParamTable,
-    screenParamTableSize,
-    paramNumber,
-    (ScreenParamValueT)paramValue);
-}
-
 void applyNavParam(uint8_t id, int32_t value) {
-  param_router_apply<ScreenParamValueT>(
-    screenParamTable,
-    screenParamTableSize,
-    id,
-    (ScreenParamValueT)value);
-  mark_u8g2_dirty();  // FLAG OLED DIRTY
+  screen_cache_param(id, value);
 }
 
 void setDisplayParam() {
-  // Always update internal model / bar levels
-  applyParamToModelAndSignals();
+  screen_cache_param(paramNumber, paramValue);
 
-  paramName = "";  // Clear stale string
+  paramName = "";
 
-  // If currently in Silent mode, suppress UI text generation and inspector triggers entirely
   if (serialSignal == screen_mode_raw(ScreenMode::Silent)) {
-    activeInspector      = InspectorType::None;
-    inspectorActiveFlag  = false;
     paramChangeTimerFlag = false;
-    return; // <--- EXIT EARLY: Do not generate toast strings during preset recall!
   }
-
-  // Live user interaction (Not Silent)
-  InspectorType insp = get_param_inspector_type(static_cast<ParamId>(paramNumber));
-  if (insp != InspectorType::None) {
-    activeInspector             = insp;
-    inspectorLastActivityMillis = millis();
-    inspectorActiveFlag         = true;
-  }
-
-  // FLAG OLED DIRTY IMMEDIATELY
-  mark_u8g2_dirty();
-
 
   switch (static_cast<ParamId>(paramNumber)) {
     // --- Oscillator Enables ---
@@ -588,15 +557,15 @@ void setDisplayParam() {
         default: break;
       }
       break;
-    case ParamId::PARAM_VOICE_ALLOC_MODE:
+      case ParamId::PARAM_VOICE_ALLOC_MODE:
       switch (paramValue) {
-        case 0: paramName = " ROUND ROBIN / LAST"; break;
-        case 1: paramName = " OLDEST / FIRST"; break;
-        case 2: paramName = " QUIETEST / LAST"; break;
-        case 3: paramName = " QUIETEST KEEP LOW / LOW"; break;
-        case 4: paramName = " QUIETEST KEEP HIGH / HIGH"; break;
-        case 5: paramName = " NO STEAL / FIRST"; break;
-        default: break;
+        case 0: paramName = " ROUND ROBIN"; break;
+        case 1: paramName = " OLDEST"; break;
+        case 2: paramName = " QUIETEST"; break;
+        case 3: paramName = " QUIETEST LOW"; break;
+        case 4: paramName = " QUIETEST HIGH"; break;
+        case 5: paramName = " NO STEAL"; break;
+        default: paramName = " ROUND ROBIN"; break;
       }
       break;
 
@@ -620,6 +589,8 @@ void setDisplayParam() {
     // --- Curves ---
     case ParamId::PARAM_ADSR1_ATTACK_CURVE:
     case ParamId::PARAM_ADSR2_ATTACK_CURVE:
+    case ParamId::PARAM_ADSR1_DECAY_CURVE:
+    case ParamId::PARAM_ADSR2_DECAY_CURVE:
       switch (paramValue) {
         case 0: paramName = " EXP"; break;
         case 1: paramName = " SOFT"; break;
@@ -629,29 +600,11 @@ void setDisplayParam() {
         case 5: paramName = " SLOW THEN LIN"; break;
         case 6: paramName = " ALMOST LIN"; break;
         case 7: paramName = " LINEAR"; break;
-        case 100: paramName = (paramNumber == static_cast<uint8_t>(ParamId::PARAM_ADSR1_ATTACK_CURVE)) ? " ADSR1 Curves" : " ADSR2 Curves"; break;
-        default: break;
+        default: paramName = " EXP"; break;
       }
       break;
 
-    case ParamId::PARAM_ADSR1_DECAY_CURVE:
-    case ParamId::PARAM_ADSR2_DECAY_CURVE:
-      switch (paramValue) {
-        case 0: paramName = " EXP"; break;
-        case 1: paramName = " SOFT"; break;
-        case 2: paramName = " STEEP"; break;
-        case 3: paramName = " CONVEX"; break;
-        case 4: paramName = " FAST START S"; break;
-        case 5: paramName = " SLOW THEN LIN"; break;
-        case 6: paramName = " FAST THEN LIN"; break;
-        case 7: paramName = " ALMOST LIN"; break;
-        case 8: paramName = " LINEAR"; break;
-        case 100: paramName = (paramNumber == static_cast<uint8_t>(ParamId::PARAM_ADSR1_DECAY_CURVE)) ? " ADSR1 Decay" : " ADSR2 Decay"; break;
-        default: break;
-      }
-      break;
-
-    // --- Manual / Hardware Function Keys (RESTORED) ---
+    // --- Manual / Hardware Function Keys ---
     case ParamId::PARAM_FUNCTION_KEY: paramName = " FUNCTION KEY"; break;
     case ParamId::PARAM_FADERS_CONTROL_MANUAL: paramName = " MAN FADERS"; break;
     case ParamId::PARAM_FADER_ROW1_CONTROL_MANUAL: paramName = " MAN FADERS 1"; break;
@@ -663,7 +616,7 @@ void setDisplayParam() {
     case ParamId::PARAM_ALL_CONTROLS_MANUAL: paramName = " ALL CONTROLS MANUAL"; break;
     case ParamId::PARAM_ADSR3_ENABLED: paramName = " ADSR3 ENABLED"; break;
 
-    // --- Calibration Menu & Stage Names (RESTORED) ---
+    // --- Calibration Menu & Stage Names ---
     case ParamId::PARAM_CALIBRATION_FLAG: paramName = " AUTO CALIBRATION"; break;
     case ParamId::PARAM_MANUAL_CALIBRATION_FLAG: paramName = " MANUAL CALIBRATION"; break;
     case ParamId::PARAM_MANUAL_CALIBRATION_STAGE:
@@ -720,14 +673,14 @@ InspectorType get_param_inspector_type(ParamId id) {
     case ParamId::PARAM_ADSR1_TO_VCA:
       return InspectorType::ADSR1;
 
-      // Envelope 2 (VCF)
+    // Envelope 2 (VCF)
     case ParamId::PARAM_VCF_ADSR_RESTART:
     case ParamId::PARAM_ADSR2_ATTACK_CURVE:
     case ParamId::PARAM_ADSR2_DECAY_CURVE:
     case ParamId::PARAM_UI_ADSR2_TO_VCF:
       return InspectorType::ADSR2;
 
-      // Envelope 3 (Pitch/PWM)
+    // Envelope 3 (Pitch/PWM)
     case ParamId::PARAM_ADSR3_TO_OSC_SELECT:
     case ParamId::PARAM_ADSR3_TO_PWM:
     case ParamId::PARAM_ADSR3_TO_DETUNE1:
@@ -736,7 +689,7 @@ InspectorType get_param_inspector_type(ParamId id) {
     case ParamId::PARAM_ADSR3_PITCH_MODE:
       return InspectorType::ADSR3;
 
-      // Filter (VCF)
+    // Filter (VCF)
     case ParamId::PARAM_RESONANCE_COMPENSATION:
     case ParamId::PARAM_VCF_KEYTRACK:
     case ParamId::PARAM_UI_CUTOFF:
@@ -744,9 +697,12 @@ InspectorType get_param_inspector_type(ParamId id) {
     case ParamId::PARAM_UI_LFO2_TO_VCF:
     case ParamId::PARAM_VELOCITY_TO_VCF:
     case ParamId::PARAM_VCF_POTS_CONTROL_MANUAL:
+    case ParamId::PARAM_FILTER_MODE:
+    case ParamId::PARAM_DIST_DRIVE:
+    case ParamId::PARAM_DIST_MIX:
       return InspectorType::Filter;
 
-      // Oscillators & Mixer
+    // Oscillators & Mixer
     case ParamId::PARAM_OSC1_SAW_ENABLE:
     case ParamId::PARAM_OSC1_PULSE_ENABLE:
     case ParamId::PARAM_OSC1_TRI_ENABLE:
@@ -768,12 +724,15 @@ InspectorType get_param_inspector_type(ParamId id) {
     case ParamId::PARAM_SUB_LEVEL:
     case ParamId::PARAM_OSC_SYNC_MODE:
     case ParamId::PARAM_SYNC_MODE:
+    case ParamId::PARAM_SOFT_SYNC:
+    case ParamId::PARAM_SUBOSC_DIVIDE:
     case ParamId::PARAM_PORTAMENTO_TIME:
+    case ParamId::PARAM_PORTAMENTO_MODE:
     case ParamId::PARAM_PW_VALUE:
     case ParamId::PARAM_PWM_POTS_CONTROL_MANUAL:
       return InspectorType::Oscillators;
 
-      // LFO 1
+    // LFO 1
     case ParamId::PARAM_LFO1_WAVEFORM:
     case ParamId::PARAM_LFO1_SPEED:
     case ParamId::PARAM_LFO1_TO_DCO:
@@ -783,7 +742,7 @@ InspectorType get_param_inspector_type(ParamId id) {
     case ParamId::PARAM_LFO1_TO_OSC3:
       return InspectorType::LFO1;
 
-      // LFO 2
+    // LFO 2
     case ParamId::PARAM_LFO2_WAVEFORM:
     case ParamId::PARAM_LFO2_SPEED:
     case ParamId::PARAM_LFO2_TO_OSC2:
@@ -793,12 +752,12 @@ InspectorType get_param_inspector_type(ParamId id) {
     case ParamId::PARAM_LFO2_TO_PW:
       return InspectorType::LFO2;
 
-      // LFO 3
+    // LFO 3
     case ParamId::PARAM_LFO3_SPEED:
     case ParamId::PARAM_LFO3_WAVEFORM:
       return InspectorType::LFO3;
 
-      // Voice Engine & Drift
+    // Voice Engine & Drift
     case ParamId::PARAM_VOICE_MODE:
     case ParamId::PARAM_VOICE_ALLOC_MODE:
     case ParamId::PARAM_UNISON_DETUNE:

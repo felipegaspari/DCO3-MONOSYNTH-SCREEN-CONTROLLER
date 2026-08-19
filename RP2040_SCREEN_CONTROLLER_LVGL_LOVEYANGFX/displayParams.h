@@ -1,6 +1,7 @@
 #ifndef __DISPLAY_PARAMS_H__
 #define __DISPLAY_PARAMS_H__
 
+#include "_build_libs/DCO-PROTOCOL/serial_input_protocol.h" 
 #include "params_def.h"
 #include "screen_mode.h"
 #include "screen_target.h"

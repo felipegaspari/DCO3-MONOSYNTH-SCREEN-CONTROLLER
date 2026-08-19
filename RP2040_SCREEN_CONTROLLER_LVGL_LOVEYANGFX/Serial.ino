@@ -79,7 +79,7 @@ static void SCREEN_HOT(screenSerial1_handle_patch_mix_block)(char, const uint8_t
 // Standard Serial Frame Handlers
 // ---------------------------------------------------------------------------
 
-// 'a' : ADSR1 block (attack/decay/sustain/release).
+// In 'a' frame handler:
 static void SCREEN_HOT(screenSerial1_handle_adsr1)(char, const uint8_t* payload, uint8_t) {
   screen_state_lock();
   ADSR1Attack  = decode_u16_le(payload + 0);
@@ -87,10 +87,14 @@ static void SCREEN_HOT(screenSerial1_handle_adsr1)(char, const uint8_t* payload,
   ADSR1Sustain = decode_u16_le(payload + 4);
   ADSR1Release = decode_u16_le(payload + 6);
   updateADSR1Flag = true;
+
+  if (serialSignal != screen_mode_raw(ScreenMode::Silent)) {
+    trigger_oled_inspector(InspectorType::ADSR1);
+  }
   screen_state_unlock();
 }
 
-// 'b' : ADSR2 block.
+// In 'b' frame handler:
 static void SCREEN_HOT(screenSerial1_handle_adsr2)(char, const uint8_t* payload, uint8_t) {
   screen_state_lock();
   ADSR2Attack  = decode_u16_le(payload + 0);
@@ -98,6 +102,10 @@ static void SCREEN_HOT(screenSerial1_handle_adsr2)(char, const uint8_t* payload,
   ADSR2Sustain = decode_u16_le(payload + 4);
   ADSR2Release = decode_u16_le(payload + 6);
   updateADSR2Flag = true;
+
+  if (serialSignal != screen_mode_raw(ScreenMode::Silent)) {
+    trigger_oled_inspector(InspectorType::ADSR2);
+  }
   screen_state_unlock();
 }
 
