@@ -53,9 +53,12 @@ static bool oledDirty = true;
 static uint32_t lastOledRefreshMillis = 0;
 static constexpr uint32_t MIN_OLED_INTERVAL_MS = 20;  // 50 FPS cap
 
+static uint32_t oledSaveCompletedEnteredMillis = 0;
+
 // Persistent State Tracking
 static uint8_t lastPresetNum = 255;
 static uint8_t lastPChar = 255;
+static char          lastPName[17] = "";
 static ScreenMode lastScreenMode = ScreenMode::PresetScroll;
 static InspectorType lastOledInspector = InspectorType::None;
 static uint32_t lastInspTime = 0;
@@ -660,6 +663,22 @@ void update_u8g2_core0() {
   uint32_t inspTime;
 
   screen_state_lock();
+
+  // OLED Save Completed Auto-Dismiss
+  if (mode == ScreenMode::SaveCompleted) {
+    if (lastScreenMode != ScreenMode::SaveCompleted) {
+      oledSaveCompletedEnteredMillis = now;
+    }
+    if (now - oledSaveCompletedEnteredMillis > 1800) {
+      screen_state_lock();
+      if (serialSignal == screen_mode_raw(ScreenMode::SaveCompleted)) {
+        serialSignal = screen_mode_raw(ScreenMode::PresetScroll);
+      }
+      screen_state_unlock();
+      mode = ScreenMode::PresetScroll;
+    }
+  }
+
   mode = static_cast<ScreenMode>(serialSignal);
   currentCalMenuIndex = calibrationMenuIndex;
 
@@ -691,22 +710,47 @@ void update_u8g2_core0() {
   pw = calPwCenterDisplay;
   screen_state_unlock();
 
-  bool isInspectorActive = (insp != InspectorType::None) && (now - inspTime < inspectorTimeoutMillis) && (mode != ScreenMode::Silent) && (mode == ScreenMode::PresetScroll || mode == ScreenMode::LoadSaveExit);
+  // Detect string changes
+  bool nameChanged = (strncmp(pName, lastPName, sizeof(lastPName)) != 0);
+
+  bool isInspectorActive = (insp != InspectorType::None) &&
+  (now - inspTime < inspectorTimeoutMillis) &&
+  (mode != ScreenMode::Silent) &&
+  (mode == ScreenMode::PresetScroll || mode == ScreenMode::LoadSaveExit);
 
   if (!isInspectorActive) {
     insp = InspectorType::None;
   }
 
-  // Detect state change on ANY parameter or navigation update
-  if (mode != lastScreenMode || insp != lastOledInspector || inspTime != lastInspTime || pNum != lastPresetNum || pChar != lastPChar || pToastVal != lastToastVal || pToastName != lastToastName || toastActive != lastToastActive || currentCalMenuIndex != lastCalMenuIndex || stage != lastCalStage || gap != lastCalGap || off != lastOff || a440 != lastA440 || pw != lastPw || o1 != lastO1 || o2 != lastO2 || sub != lastSub || a1 != lastA1 || d1 != lastD1 || s1 != lastS1 || r1 != lastR1 || a2 != lastA2 || d2 != lastD2 || s2 != lastS2 || r2 != lastR2) {
+  // Detect state change on ANY parameter, character, or navigation update
+  if (mode != lastScreenMode ||
+    nameChanged ||           // <--- REDRAW INSTANTLY WHEN CHARACTER CHANGES
+    insp != lastOledInspector ||
+    inspTime != lastInspTime ||
+    pNum != lastPresetNum ||
+    pChar != lastPChar ||
+    pToastVal != lastToastVal ||
+    pToastName != lastToastName ||
+    toastActive != lastToastActive ||
+    currentCalMenuIndex != lastCalMenuIndex ||
+    stage != lastCalStage ||
+    gap != lastCalGap ||
+    off != lastOff ||
+    a440 != lastA440 ||
+    pw != lastPw ||
+    o1 != lastO1 || o2 != lastO2 || sub != lastSub ||
+    a1 != lastA1 || d1 != lastD1 || s1 != lastS1 || r1 != lastR1 ||
+    a2 != lastA2 || d2 != lastD2 || s2 != lastS2 || r2 != lastR2) {
     oledDirty = true;
-  }
+    }
 
   if (!oledDirty) {
     return;
   }
 
   if (mode == ScreenMode::Silent) {
+    lastToastActive = false;
+    toastActive     = false;
     return;
   }
 
@@ -715,6 +759,7 @@ void update_u8g2_core0() {
   lastInspTime = inspTime;
   lastPresetNum = pNum;
   lastPChar = pChar;
+  memcpy(lastPName, pName, sizeof(lastPName));
   lastToastVal = pToastVal;
   lastToastName = pToastName;
   lastToastActive = toastActive;

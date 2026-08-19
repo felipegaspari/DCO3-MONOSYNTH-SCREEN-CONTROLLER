@@ -39,124 +39,42 @@ static inline void SCREEN_HOT(screen_set_param_internal)(uint8_t id, int32_t val
 }
 
 // ---------------------------------------------------------------------------
-// Screen Controller Domain Block Handlers
+// Screen Controller Domain Block Handlers (Direct Struct Caching)
 // ---------------------------------------------------------------------------
 
 // 'v' : PatchOscBlock (Oscillators, Intervals, Detunes, Drift & Portamento)
 static void SCREEN_HOT(screenSerial1_handle_patch_osc_block)(char, const uint8_t* payload, uint8_t) {
-  const PatchOscBlock* blk = reinterpret_cast<const PatchOscBlock*>(payload);
   screen_state_lock();
-
-  // Wave switches
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC1_SAW_ENABLE),   (blk->wave_enables & (1u << 0)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC1_PULSE_ENABLE), (blk->wave_enables & (1u << 1)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC1_TRI_ENABLE),   (blk->wave_enables & (1u << 2)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC2_SAW_ENABLE),   (blk->wave_enables & (1u << 3)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC2_PULSE_ENABLE), (blk->wave_enables & (1u << 4)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC2_TRI_ENABLE),   (blk->wave_enables & (1u << 5)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC3_SAW_ENABLE),   (blk->wave_enables & (1u << 6)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC3_PULSE_ENABLE), (blk->wave_enables & (1u << 7)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC3_TRI_ENABLE),   (blk->wave_enables & (1u << 8)) != 0);
-
-  // Intervals & Detune
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC1_INTERVAL),       blk->osc1_interval);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC2_INTERVAL),       blk->osc2_interval);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC3_INTERVAL),       blk->osc3_interval);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC2_DETUNE_VAL),     blk->osc2_detune);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_UNISON_DETUNE),       blk->unison_detune);
-
-  // Modes & Drift
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VOICE_MODE),          blk->voice_mode);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VOICE_ALLOC_MODE),    blk->voice_alloc_mode);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_SYNC_MODE),           blk->sync_mode);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_SOFT_SYNC),           blk->soft_sync);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_SUBOSC_DIVIDE),       blk->subosc_divide);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ANALOG_DRIFT_AMOUNT), blk->analog_drift);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ANALOG_DRIFT_SPEED),  blk->analog_drift_speed);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ANALOG_DRIFT_SPREAD), blk->analog_drift_spread);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_PORTAMENTO_TIME),     blk->portamento_time);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_PORTAMENTO_MODE),     blk->portamento_mode);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_CHARACTER),           blk->character);
-
+  memcpy(&currentOscState, payload, sizeof(PatchOscBlock));
   screen_state_unlock();
 }
 
 // 'l' : PatchLfoBlock (LFOs, Depths, PWM & Pitch Mods)
 static void SCREEN_HOT(screenSerial1_handle_patch_lfo_block)(char, const uint8_t* payload, uint8_t) {
-  const PatchLfoBlock* blk = reinterpret_cast<const PatchLfoBlock*>(payload);
   screen_state_lock();
-
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO1_WAVEFORM),        blk->lfo1_waveform);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO2_WAVEFORM),        blk->lfo2_waveform);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO1_SPEED),           blk->lfo1_speed);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO2_SPEED),           blk->lfo2_speed);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO1_TO_DCO),          blk->lfo1_to_dco);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO1_TO_OSC1),         blk->lfo1_to_osc1);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO1_TO_OSC2),         blk->lfo1_to_osc2);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO1_TO_OSC3),         blk->lfo1_to_osc3);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO2_TO_OSC2),         blk->lfo2_to_osc2);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO2_TO_OSC3),         blk->lfo2_to_osc3);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO2_TO_OSC2_COARSE),  blk->lfo2_to_osc2_coarse);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO2_TO_OSC3_COARSE),  blk->lfo2_to_osc3_coarse);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO2_TO_PW),           blk->lfo2_to_pw);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_LFO1_TO_VCA),          blk->lfo1_to_vca);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_PW_VALUE),             blk->pw_value);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR1_TO_VCA),         blk->adsr1_to_vca);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR3_TO_PWM),         blk->adsr3_to_pwm);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR3_TO_DETUNE1),     blk->adsr3_to_detune1);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR3_PITCH_MODE),     blk->adsr3_pitch_mode);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR3_TO_OSC_SELECT),  blk->adsr3_to_osc_select);
-
+  memcpy(&currentLfoState, payload, sizeof(PatchLfoBlock));
   screen_state_unlock();
 }
 
 // 'M' : PatchModBlock (8 Mod Matrix Slots)
 static void SCREEN_HOT(screenSerial1_handle_patch_mod_block)(char, const uint8_t* payload, uint8_t) {
-  const PatchModBlock* blk = reinterpret_cast<const PatchModBlock*>(payload);
   screen_state_lock();
-
-  for (uint8_t i = 0; i < 8; ++i) {
-    screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT0_SOURCE) + i * 3, blk->slots[i].src);
-    screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT0_DEST)   + i * 3, blk->slots[i].dest);
-    screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT0_DEPTH)  + i * 3, blk->slots[i].depth);
-  }
-
+  memcpy(&currentModState, payload, sizeof(PatchModBlock));
   screen_state_unlock();
 }
 
-// 'X' : PatchMixBlock (Mixer Levels, Filter Topology, Velocity & Curves)
+// 'Q' / 'X' : PatchMixBlock (Mixer Levels, Filter Topology, Velocity & Curves)
 static void SCREEN_HOT(screenSerial1_handle_patch_mix_block)(char, const uint8_t* payload, uint8_t) {
-  const PatchMixBlock* blk = reinterpret_cast<const PatchMixBlock*>(payload);
   screen_state_lock();
+  memcpy(&currentMixState, payload, sizeof(PatchMixBlock));
 
-  // Levels & Routing
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC1_LEVEL),          blk->osc1_level);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC2_LEVEL),          blk->osc2_level);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_OSC3_LEVEL),          blk->osc3_level);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_SUB_LEVEL),           blk->sub_level);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VCA_LEVEL),           blk->vca_level);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_FILTER_MODE),         blk->filter_mode);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VELOCITY_TO_VCF),     blk->velocity_to_vcf);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VELOCITY_TO_VCA),     blk->velocity_to_vca);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VCF_KEYTRACK),        blk->vcf_keytrack);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR1_TO_VCA),        blk->adsr1_to_vca);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_DIST_DRIVE),          blk->dist_drive);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_DIST_MIX),            blk->dist_mix);
-  
-  // Curves
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR1_ATTACK_CURVE),  blk->adsr1_attack_curve);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR1_DECAY_CURVE),   blk->adsr1_decay_curve);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR2_ATTACK_CURVE),  blk->adsr2_attack_curve);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_ADSR2_DECAY_CURVE),   blk->adsr2_decay_curve);
-
-  // Flags
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_RESONANCE_COMPENSATION), (blk->misc_flags & (1 << 0)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VCA_ADSR_RESTART),       (blk->misc_flags & (1 << 1)) != 0);
-  screen_set_param_internal(static_cast<uint8_t>(ParamId::PARAM_VCF_ADSR_RESTART),       (blk->misc_flags & (1 << 2)) != 0);
-  
+  // Update persistent background level-bar widgets immediately
+  apply_param_osc1_level(currentMixState.osc1_level);
+  apply_param_osc2_level(currentMixState.osc2_level);
+  apply_param_osc3_level(currentMixState.osc3_level);
+  apply_param_sub_level(currentMixState.sub_level);
   screen_state_unlock();
 }
-
 // ---------------------------------------------------------------------------
 // Standard Serial Frame Handlers
 // ---------------------------------------------------------------------------

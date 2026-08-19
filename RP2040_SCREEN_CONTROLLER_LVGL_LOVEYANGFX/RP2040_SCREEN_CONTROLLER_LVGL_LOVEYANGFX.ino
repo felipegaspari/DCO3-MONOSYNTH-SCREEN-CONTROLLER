@@ -57,8 +57,14 @@ static uint32_t SCREEN_HOT(my_tick_get_cb)(void) {
 
 uint32_t paramChangeLastMillis = 0;
 static ScreenMode currentMode = ScreenMode::PresetScroll;
-static const uint32_t silentModeTimeoutMillis = 150;  // Fast 150ms timeout
+static const uint32_t silentModeTimeoutMillis = 1000;  // timeout
 static uint32_t silentModeEnteredMillis = 0;
+
+// Dedicated Preset Saved message timer
+static bool     saveMessageTimerFlag = false;
+static uint32_t saveMessageLastMillis = 0;
+static const uint32_t saveMessageHideTimeMillis = 1800; // 1.8 seconds hold time
+
 
 // Tracker for manual calibration redraws
 static uint8_t lastRenderedStage = 255;
@@ -68,7 +74,7 @@ static uint16_t lastRendered440 = 0;
 static uint16_t lastRenderedPw = 0;
 
 /// LOAD FONT TO SRAM
-static uint8_t ram_font_bitmap[16384];  // 16 KB SRAM buffer
+static uint8_t ram_font_bitmap[0];  // 16384 -> 16 KB SRAM buffer
 static lv_font_fmt_txt_dsc_t ram_font_dsc;
 static lv_font_t ram_big_font;
 
@@ -129,6 +135,14 @@ static bool inspectorVisible = false;
 static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   screen_state_lock();
 
+  // If currently in Silent mode, suppress incoming parameter toasts and inspectors
+  if (serialSignal == screen_mode_raw(ScreenMode::Silent)) {
+    paramChangeFlag      = false;
+    paramChangeTimerFlag = false;
+    activeInspector      = InspectorType::None;
+    inspectorActiveFlag  = false;
+  }
+
   // Signals
   snap.hasSignal = signalFlag;
   if (signalFlag) {
@@ -158,10 +172,10 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   snap.paramNumber = paramNumber;
 
   // Inspector Shell Capture
-  snap.inspectorType = activeInspector;
-  snap.hasInspectorChange = inspectorActiveFlag;
+  snap.inspectorType         = activeInspector;
+  snap.hasInspectorChange    = inspectorActiveFlag;
   snap.inspectorActivityTime = inspectorLastActivityMillis;
-  inspectorActiveFlag = false;
+  inspectorActiveFlag        = false;
 
   // Level Bars
   snap.levelBars = levelBarFlag;
@@ -294,12 +308,17 @@ static void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
     case ScreenMode::SaveCompleted:
       lv_obj_add_flag(ui_PresetNewName, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(ui_PresetSavePanel, LV_OBJ_FLAG_HIDDEN);
+
       lv_obj_set_width(ui_PresetSavedMesage, 200);
       lv_obj_set_height(ui_PresetSavedMesage, 100);
       lv_obj_align(ui_PresetSavedMesage, LV_ALIGN_CENTER, -20, 0);
+
       lv_obj_remove_flag(ui_PresetSavedMesage, LV_OBJ_FLAG_HIDDEN);
-      paramChangeTimerFlag = true;
-      paramChangeLastMillis = millis();
+
+      // Start dedicated Save Message timer
+      saveMessageTimerFlag  = true;
+      saveMessageLastMillis = millis();
+
       currentMode = ScreenMode::PresetScroll;
       draw_preset_scroll_1(currentMode, snap.presetNum, snap.presetName, snap.presetChar);
       break;
@@ -349,22 +368,42 @@ static void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode, const Co
     return;
   }
 
-  if (paramChangeTimerFlag) {
-    if (millis() - paramChangeLastMillis > paramHideTimeMillis) {
-      lv_obj_add_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
+  uint32_t now = millis();
+
+  // 1. Dedicated Preset Saved Message Timer (Immune to preset scroll resets)
+  if (saveMessageTimerFlag) {
+    if (now - saveMessageLastMillis > saveMessageHideTimeMillis) {
       lv_obj_add_flag(ui_PresetSavedMesage, LV_OBJ_FLAG_HIDDEN);
+      saveMessageTimerFlag = false;
+
+      // Reset serialSignal on Core 0 so OLED returns to dashboard
+      screen_state_lock();
+      if (serialSignal == screen_mode_raw(ScreenMode::SaveCompleted)) {
+        serialSignal = screen_mode_raw(ScreenMode::PresetScroll);
+      }
+      screen_state_unlock();
+      mark_u8g2_dirty();
+    }
+  }
+
+  // 2. Parameter Toast Message Timer
+  if (paramChangeTimerFlag) {
+    if (now - paramChangeLastMillis > paramHideTimeMillis) {
+      lv_obj_add_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
       paramChangeTimerFlag = false;
     }
   }
 
+  // 3. Preset Character Position
   if (snap.hasPresetChar) {
     lv_textarea_set_cursor_pos(ui_PresetNewName, snap.presetChar);
   }
 
+  // 4. Preset Scroll Event
   if (snap.hasPresetScroll) {
     lv_obj_add_flag(ui_BottomMessagePanel, LV_OBJ_FLAG_HIDDEN);
     draw_preset_scroll_1(mode, snap.presetNum, snap.presetName, snap.presetChar);
-    paramChangeTimerFlag = false;
+    paramChangeTimerFlag = false; // Safely only clears parameter toasts now
     lv_refr_now(NULL);
   } else if (snap.hasParamChange && snap.paramName && snap.paramName[0] != '\0') {
     draw_param_1(snap.paramName, snap.paramValue);

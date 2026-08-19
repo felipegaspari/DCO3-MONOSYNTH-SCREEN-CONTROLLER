@@ -25,6 +25,12 @@ enum class InspectorType : uint8_t {
   VoiceEngine
 };
 
+// --- Global Patch State Cache (Resident in Screen RAM) ---
+extern PatchOscBlock currentOscState;
+extern PatchLfoBlock currentLfoState;
+extern PatchModBlock currentModState;
+extern PatchMixBlock currentMixState;
+
 // Single Atomic Snapshot Structure for Lock-Free Core 1 Rendering
 struct Core1Snapshot {
   bool hasSignal;
@@ -108,5 +114,10 @@ void applyNavParam(uint8_t id, int32_t value);
 InspectorType get_param_inspector_type(ParamId id);
 
 extern lv_obj_t* ui_calGapTrack;
+
+void apply_param_osc1_level(int32_t v);
+void apply_param_osc2_level(int32_t v);
+void apply_param_osc3_level(int32_t v);
+void apply_param_sub_level(int32_t v);
 
 #endif  // __DISPLAY_PARAMS_H__

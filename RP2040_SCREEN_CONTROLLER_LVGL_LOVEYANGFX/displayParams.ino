@@ -35,6 +35,12 @@ volatile uint16_t ADSR2Decay = 0;
 volatile uint16_t ADSR2Sustain = 0;
 volatile uint16_t ADSR2Release = 0;
 
+// --- Global Patch State Cache (Resident in Screen RAM) ---
+PatchOscBlock currentOscState;
+PatchLfoBlock currentLfoState;
+PatchModBlock currentModState;
+PatchMixBlock currentMixState;
+
 using ScreenParamValueT = int32_t;
 using ScreenParamDescriptor = ParamDescriptorT<ScreenParamValueT>;
 
@@ -164,25 +170,25 @@ void drawManualCalibration(const Core1Snapshot &snap) {
   }
 }
 // Mixer levels -> bar values (with change check to avoid redundant work)
-static void apply_param_osc1_level(int32_t v) {
+void apply_param_osc1_level(int32_t v) {
   if (OSC1Level != (uint8_t)v) {
     OSC1Level = (uint8_t)v;
     levelBarFlag |= LEVEL_BAR_OSC1;
   }
 }
 
-static void apply_param_osc2_level(int32_t v) {
+void apply_param_osc2_level(int32_t v) {
   if (OSC2Level != (uint8_t)v) {
     OSC2Level = (uint8_t)v;
     levelBarFlag |= LEVEL_BAR_OSC2;
   }
 }
 
-static void apply_param_osc3_level(int32_t v) {
+void apply_param_osc3_level(int32_t v) {
   OSC3Level = (uint8_t)v;
 }
 
-static void apply_param_sub_level(int32_t v) {
+void apply_param_sub_level(int32_t v) {
   if (SUBLevel != (uint8_t)v) {
     SUBLevel = (uint8_t)v;
     levelBarFlag |= LEVEL_BAR_SUB;
@@ -269,6 +275,147 @@ static void apply_param_ui_menu_position(int32_t v) {
   calibrationMenuIndex = (uint8_t)v;
 }
 
+// =============================================================================
+// Live Parameter Ingress Router -> Struct State Cache
+// =============================================================================
+void screen_cache_param(uint8_t id, int32_t val) {
+  const ParamId pId = static_cast<ParamId>(id);
+
+  // 1. Mod Matrix Range (Slots 0..7: Source, Dest, Depth)
+  if (id >= static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT0_SOURCE) &&
+      id <= static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT7_DEPTH)) {
+    uint8_t offset  = id - static_cast<uint8_t>(ParamId::PARAM_MOD_SLOT0_SOURCE);
+    uint8_t slotIdx = offset / 3;
+    uint8_t subType = offset % 3;
+    if (slotIdx < 8) {
+      if (subType == 0)      currentModState.slots[slotIdx].src   = (uint8_t)val;
+      else if (subType == 1) currentModState.slots[slotIdx].dest  = (uint8_t)val;
+      else                   currentModState.slots[slotIdx].depth = (int16_t)val;
+    }
+    return;
+  }
+
+  // 2. Discrete Parameter Mapping
+  switch (pId) {
+    // --- Oscillators & Voice (PatchOscBlock) ---
+    case ParamId::PARAM_OSC1_SAW_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 0); else currentOscState.wave_enables &= ~(1u << 0);
+      break;
+    case ParamId::PARAM_OSC1_PULSE_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 1); else currentOscState.wave_enables &= ~(1u << 1);
+      break;
+    case ParamId::PARAM_OSC1_TRI_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 2); else currentOscState.wave_enables &= ~(1u << 2);
+      break;
+    case ParamId::PARAM_OSC2_SAW_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 3); else currentOscState.wave_enables &= ~(1u << 3);
+      break;
+    case ParamId::PARAM_OSC2_PULSE_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 4); else currentOscState.wave_enables &= ~(1u << 4);
+      break;
+    case ParamId::PARAM_OSC2_TRI_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 5); else currentOscState.wave_enables &= ~(1u << 5);
+      break;
+    case ParamId::PARAM_OSC3_SAW_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 6); else currentOscState.wave_enables &= ~(1u << 6);
+      break;
+    case ParamId::PARAM_OSC3_PULSE_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 7); else currentOscState.wave_enables &= ~(1u << 7);
+      break;
+    case ParamId::PARAM_OSC3_TRI_ENABLE:
+      if (val) currentOscState.wave_enables |= (1u << 8); else currentOscState.wave_enables &= ~(1u << 8);
+      break;
+
+    case ParamId::PARAM_OSC1_INTERVAL:       currentOscState.osc1_interval       = (int8_t)val; break;
+    case ParamId::PARAM_OSC2_INTERVAL:       currentOscState.osc2_interval       = (int8_t)val; break;
+    case ParamId::PARAM_OSC3_INTERVAL:       currentOscState.osc3_interval       = (int8_t)val; break;
+    case ParamId::PARAM_OSC2_DETUNE_VAL:     currentOscState.osc2_detune         = (uint16_t)val; break;
+    case ParamId::PARAM_UNISON_DETUNE:       currentOscState.unison_detune       = (int16_t)val; break;
+    case ParamId::PARAM_VOICE_MODE:          currentOscState.voice_mode          = (uint8_t)val; break;
+    case ParamId::PARAM_VOICE_ALLOC_MODE:    currentOscState.voice_alloc_mode    = (uint8_t)val; break;
+    case ParamId::PARAM_SYNC_MODE:
+    case ParamId::PARAM_OSC_SYNC_MODE:       currentOscState.sync_mode           = (uint8_t)val; break;
+    case ParamId::PARAM_SOFT_SYNC:           currentOscState.soft_sync           = (uint8_t)val; break;
+    case ParamId::PARAM_SUBOSC_DIVIDE:       currentOscState.subosc_divide       = (uint8_t)val; break;
+    case ParamId::PARAM_ANALOG_DRIFT_AMOUNT: currentOscState.analog_drift        = (int8_t)val; break;
+    case ParamId::PARAM_ANALOG_DRIFT_SPEED:  currentOscState.analog_drift_speed  = (int16_t)val; break;
+    case ParamId::PARAM_ANALOG_DRIFT_SPREAD: currentOscState.analog_drift_spread = (int8_t)val; break;
+    case ParamId::PARAM_PORTAMENTO_TIME:     currentOscState.portamento_time     = (uint16_t)val; break;
+    case ParamId::PARAM_PORTAMENTO_MODE:     currentOscState.portamento_mode     = (uint8_t)val; break;
+    case ParamId::PARAM_CHARACTER:           currentOscState.character           = (uint8_t)val; break;
+
+    // --- LFOs & Envelopes (PatchLfoBlock) ---
+    case ParamId::PARAM_LFO1_WAVEFORM:       currentLfoState.lfo1_waveform       = (uint8_t)val; break;
+    case ParamId::PARAM_LFO2_WAVEFORM:       currentLfoState.lfo2_waveform       = (uint8_t)val; break;
+    case ParamId::PARAM_LFO1_SPEED:          currentLfoState.lfo1_speed          = (uint16_t)val; break;
+    case ParamId::PARAM_LFO2_SPEED:          currentLfoState.lfo2_speed          = (uint16_t)val; break;
+    case ParamId::PARAM_LFO1_TO_DCO:         currentLfoState.lfo1_to_dco         = (uint16_t)val; break;
+    case ParamId::PARAM_LFO1_TO_OSC1:        currentLfoState.lfo1_to_osc1        = (uint8_t)val; break;
+    case ParamId::PARAM_LFO1_TO_OSC2:        currentLfoState.lfo1_to_osc2        = (uint8_t)val; break;
+    case ParamId::PARAM_LFO1_TO_OSC3:        currentLfoState.lfo1_to_osc3        = (uint8_t)val; break;
+    case ParamId::PARAM_LFO2_TO_OSC2:        currentLfoState.lfo2_to_osc2        = (uint16_t)val; break;
+    case ParamId::PARAM_LFO2_TO_OSC3:        currentLfoState.lfo2_to_osc3        = (uint16_t)val; break;
+    case ParamId::PARAM_LFO2_TO_OSC2_COARSE: currentLfoState.lfo2_to_osc2_coarse = (uint16_t)val; break;
+    case ParamId::PARAM_LFO2_TO_OSC3_COARSE: currentLfoState.lfo2_to_osc3_coarse = (uint16_t)val; break;
+    case ParamId::PARAM_LFO2_TO_PW:          currentLfoState.lfo2_to_pw          = (uint16_t)val; break;
+    case ParamId::PARAM_LFO1_TO_VCA:         currentLfoState.lfo1_to_vca         = (uint16_t)val; break;
+    case ParamId::PARAM_PW_VALUE:            currentLfoState.pw_value            = (uint16_t)val; break;
+    case ParamId::PARAM_ADSR1_TO_VCA:        
+      currentLfoState.adsr1_to_vca = (int16_t)val;
+      currentMixState.adsr1_to_vca = (int16_t)val;
+      break;
+    case ParamId::PARAM_ADSR3_TO_PWM:        currentLfoState.adsr3_to_pwm        = (int16_t)val; break;
+    case ParamId::PARAM_ADSR3_TO_DETUNE1:    currentLfoState.adsr3_to_detune1    = (int16_t)val; break;
+    case ParamId::PARAM_ADSR3_PITCH_MODE:    currentLfoState.adsr3_pitch_mode    = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR3_TO_OSC_SELECT: currentLfoState.adsr3_to_osc_select = (int8_t)val; break;
+
+    // --- Mixer, Filter & Dynamics (PatchMixBlock) ---
+    case ParamId::PARAM_OSC1_LEVEL:          
+      currentMixState.osc1_level = (uint8_t)val;
+      apply_param_osc1_level(val);
+      break;
+    case ParamId::PARAM_OSC2_LEVEL:          
+      currentMixState.osc2_level = (uint8_t)val;
+      apply_param_osc2_level(val);
+      break;
+    case ParamId::PARAM_OSC3_LEVEL:          
+      currentMixState.osc3_level = (uint8_t)val;
+      apply_param_osc3_level(val);
+      break;
+    case ParamId::PARAM_SUB_LEVEL:           
+      currentMixState.sub_level = (uint8_t)val;
+      apply_param_sub_level(val);
+      break;
+    case ParamId::PARAM_VCA_LEVEL:
+    case ParamId::PARAM_VCA_LEVEL_ALT:       currentMixState.vca_level           = (uint8_t)val; break;
+    case ParamId::PARAM_FILTER_MODE:         currentMixState.filter_mode         = (uint8_t)val; break;
+    case ParamId::PARAM_VELOCITY_TO_VCF:     currentMixState.velocity_to_vcf     = (int8_t)val; break;
+    case ParamId::PARAM_VELOCITY_TO_VCA:     currentMixState.velocity_to_vca     = (int8_t)val; break;
+    case ParamId::PARAM_VCF_KEYTRACK:        currentMixState.vcf_keytrack        = (int16_t)val; break;
+    case ParamId::PARAM_DIST_DRIVE:          currentMixState.dist_drive          = (uint16_t)val; break;
+    case ParamId::PARAM_DIST_MIX:            currentMixState.dist_mix            = (uint16_t)val; break;
+    case ParamId::PARAM_ADSR1_ATTACK_CURVE:  currentMixState.adsr1_attack_curve  = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR1_DECAY_CURVE:   currentMixState.adsr1_decay_curve   = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR2_ATTACK_CURVE:  currentMixState.adsr2_attack_curve  = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR2_DECAY_CURVE:   currentMixState.adsr2_decay_curve   = (uint8_t)val; break;
+
+    case ParamId::PARAM_RESONANCE_COMPENSATION:
+      if (val) currentMixState.misc_flags |= (1 << 0); else currentMixState.misc_flags &= ~(1 << 0);
+      break;
+    case ParamId::PARAM_VCA_ADSR_RESTART:
+      if (val) currentMixState.misc_flags |= (1 << 1); else currentMixState.misc_flags &= ~(1 << 1);
+      break;
+    case ParamId::PARAM_VCF_ADSR_RESTART:
+      if (val) currentMixState.misc_flags |= (1 << 2); else currentMixState.misc_flags &= ~(1 << 2);
+      break;
+    case ParamId::PARAM_ADSR3_ENABLED:
+      if (val) currentMixState.misc_flags |= (1 << 3); else currentMixState.misc_flags &= ~(1 << 3);
+      break;
+
+    default:
+      break;
+  }
+}
 static const ScreenParamDescriptor screenParamTable[] = {
   { ParamId::PARAM_OSC1_LEVEL, apply_param_osc1_level },
   { ParamId::PARAM_OSC2_LEVEL, apply_param_osc2_level },
@@ -285,6 +432,7 @@ static const ScreenParamDescriptor screenParamTable[] = {
   { ParamId::PARAM_UI_CALIBRATION_DISMISS, apply_param_ui_calibration_dismiss },
   { ParamId::PARAM_UI_CALIBRATION_MENU_MODE, apply_param_ui_calibration_menu_mode },
 };
+
 
 static const size_t screenParamTableSize = sizeof(screenParamTable) / sizeof(screenParamTable[0]);
 
@@ -349,21 +497,25 @@ void applyNavParam(uint8_t id, int32_t value) {
 }
 
 void setDisplayParam() {
+  // Always update internal model / bar levels
   applyParamToModelAndSignals();
 
   paramName = "";  // Clear stale string
 
-  // Activate inspector only when NOT in Silent mode
+  // If currently in Silent mode, suppress UI text generation and inspector triggers entirely
   if (serialSignal == screen_mode_raw(ScreenMode::Silent)) {
-    activeInspector = InspectorType::None;
-    inspectorActiveFlag = false;
-  } else {
-    InspectorType insp = get_param_inspector_type(static_cast<ParamId>(paramNumber));
-    if (insp != InspectorType::None) {
-      activeInspector = insp;
-      inspectorLastActivityMillis = millis();
-      inspectorActiveFlag = true;
-    }
+    activeInspector      = InspectorType::None;
+    inspectorActiveFlag  = false;
+    paramChangeTimerFlag = false;
+    return; // <--- EXIT EARLY: Do not generate toast strings during preset recall!
+  }
+
+  // Live user interaction (Not Silent)
+  InspectorType insp = get_param_inspector_type(static_cast<ParamId>(paramNumber));
+  if (insp != InspectorType::None) {
+    activeInspector             = insp;
+    inspectorLastActivityMillis = millis();
+    inspectorActiveFlag         = true;
   }
 
   // FLAG OLED DIRTY IMMEDIATELY
