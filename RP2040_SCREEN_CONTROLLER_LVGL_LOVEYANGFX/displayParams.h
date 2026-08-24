@@ -1,3 +1,18 @@
+/**
+ * @file displayParams.h
+ * @brief Screen RAM Patch Cache, Inspector Categories, and Cross-Core Snapshot Structs.
+ * 
+ * @details Declares the UI rendering state, parameter classification helpers, and 
+ * thread-safe data structures used by the Screen Controller.
+ * 
+ * Key Architecture:
+ *  - Core1Snapshot: Lock-free atomic snapshot structure populated by Core 0 (UART parser) 
+ *    and consumed by Core 1 (LVGL rendering pipeline).
+ *  - Global Patch Cache: Resident RAM copies of `currentOscState`, `currentLfoState`, 
+ *    `currentModState`, and `currentMixState` driving contextual OLED/TFT inspector shells.
+ *  - Defines contextual `InspectorType` categorization and background level-bar bitmasks.
+ */
+
 #ifndef __DISPLAY_PARAMS_H__
 #define __DISPLAY_PARAMS_H__
 

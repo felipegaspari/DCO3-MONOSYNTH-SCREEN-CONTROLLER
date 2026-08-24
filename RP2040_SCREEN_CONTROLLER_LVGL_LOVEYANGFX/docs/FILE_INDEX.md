@@ -356,7 +356,7 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 14 | `PARAM_OSC2_INTERVAL` | `OSC2 Interval` | `v-=36` | — |
 | 15 | `PARAM_OSC2_DETUNE_VAL` | `OSC2 Detune` | `v-=256` | — |
 | 16 | `PARAM_LFO2_TO_OSC2` | `LFO2->OSC2 Pitch` | — | — |
-| 17 | `PARAM_OSC_SYNC_MODE` | `OscPhaseSync` | — | — |
+| 17 | `PARAM_OSC_PHASE_SYNC` | `OscPhaseSync` | — | — |
 | 18 | `PARAM_PORTAMENTO_TIME` | `Portamento` | — | — |
 | 19 | `PARAM_VCF_KEYTRACK` | `VCF Keytrack` | — | — |
 | 20 | `PARAM_VELOCITY_TO_VCF` | `Velocity -> VCF` | — | — |

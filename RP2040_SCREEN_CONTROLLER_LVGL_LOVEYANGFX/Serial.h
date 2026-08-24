@@ -1,3 +1,21 @@
+/**
+ * @file Serial.h
+ * @brief Screen Controller Serial Pipeline, Peer UART Routing, and Concurrency Locks.
+ * 
+ * @details Configures physical UART reception, DMA TX buffers, and cross-core synchronization 
+ * for the Screen Controller subsystem.
+ * 
+ * Key Capabilities:
+ *  - Discovers hardware peers based on project model (Serial1 Input link, Serial2 Mainboard link).
+ *  - Declares `screenStateMutex` inside the pico-sdk `.mutex_array` section to ensure safe
+ *    cross-core publication between the Core 0 serial pump and Core 1 LVGL rendering loop.
+ * 
+ * @note Concurrency Discipline:
+ *  - Core 0 acquires `screen_state_lock()`, updates shared volatile flags/snapshots, and unlocks.
+ *  - Core 1 locks briefly to snapshot state, unlocks immediately, and executes all LVGL widget
+ *    drawing routines with the mutex RELEASED. Never call `lv_*` APIs while holding the lock.
+ */
+
 #ifndef __SERIAL_H__
 #define __SERIAL_H__
 
