@@ -75,6 +75,10 @@ struct Core1Snapshot {
   uint16_t a1a, a1d, a1s, a1r;
   uint16_t a2a, a2d, a2s, a2r;
 
+// --- Navigation State ---
+uint8_t navMenuIndex;
+uint8_t activeMenuMode;
+
   uint8_t calMenuIndex;
   int8_t calOffset;
   uint16_t calAmp440;
@@ -118,6 +122,9 @@ extern volatile uint16_t ADSR2Attack;
 extern volatile uint16_t ADSR2Decay;
 extern volatile uint16_t ADSR2Sustain;
 extern volatile uint16_t ADSR2Release;
+
+extern volatile uint8_t navMenuIndex;
+extern volatile uint8_t activeMenuMode;
 
 extern lv_obj_t* ui_calGapTrack;
 

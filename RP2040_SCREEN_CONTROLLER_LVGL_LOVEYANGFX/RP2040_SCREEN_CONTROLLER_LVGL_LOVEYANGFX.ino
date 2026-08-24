@@ -78,6 +78,9 @@ static uint8_t ram_font_bitmap[0];  // 16384 -> 16 KB SRAM buffer
 static lv_font_fmt_txt_dsc_t ram_font_dsc;
 static lv_font_t ram_big_font;
 
+// Debug Menu Label
+static lv_obj_t* ui_DebugMenuLabel = nullptr;
+
 void setup() {
   Serial.begin(2000000);
 
@@ -117,6 +120,16 @@ void setup1() {
 #endif
 
   ui_init();
+
+  // --- Minimal Placeholder UI Overlay ---   ////////////////////////////////////
+  ui_DebugMenuLabel = lv_label_create(lv_layer_top()); // Float above everything
+  lv_obj_align(ui_DebugMenuLabel, LV_ALIGN_TOP_MID, 0, 10);
+  lv_obj_set_style_text_color(ui_DebugMenuLabel, lv_color_hex(0x00FF00), 0); // Bright green
+  lv_obj_set_style_bg_color(ui_DebugMenuLabel, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(ui_DebugMenuLabel, LV_OPA_80, 0);
+  lv_label_set_text(ui_DebugMenuLabel, "Menu: OFF | Focus: 0");
+  lv_obj_add_flag(ui_DebugMenuLabel, LV_OBJ_FLAG_HIDDEN); // Hidden by default
+  ////////////////////////////////////////////////////////////////////////////////
 
   lv_obj_set_style_text_opa(ui_PresetN, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_add_flag(ui_PresetNShadow, LV_OBJ_FLAG_HIDDEN);
@@ -208,6 +221,10 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
   snap.calStage = manualCalibrationStage;
   snap.calGap = calibrationGap;
   snap.calTopology = screenCalTopology;
+
+  // Menu Navigation
+  snap.navMenuIndex = navMenuIndex;
+  snap.activeMenuMode = activeMenuMode;
 
   screen_state_unlock();
 }
@@ -470,6 +487,30 @@ static void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot
   }
 }
 
+static uint8_t lastFocusedIndex = 255;
+static uint8_t lastMenuMode = 255;
+
+static void SCREEN_HOT(updateGenericFocus)(const Core1Snapshot &snap) {
+  // Only redraw if something actually changed
+  if (snap.navMenuIndex == lastFocusedIndex && snap.activeMenuMode == lastMenuMode) return;
+  
+  lastFocusedIndex = snap.navMenuIndex;
+  lastMenuMode = snap.activeMenuMode;
+
+  if (snap.activeMenuMode == 0) {
+    // Menu Mode 0 = NORMAL operation, hide the debug label
+    lv_obj_add_flag(ui_DebugMenuLabel, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    // Menu Mode > 0 = A Menu is open, show and update the label
+    lv_obj_remove_flag(ui_DebugMenuLabel, LV_OBJ_FLAG_HIDDEN);
+    
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Menu ID: %d | Cursor Focus: %d", 
+             snap.activeMenuMode, snap.navMenuIndex);
+    lv_label_set_text(ui_DebugMenuLabel, buf);
+  }
+}
+
 // Core 1 Main Loop
 void SCREEN_HOT(loop1)(void) {
   Core1Snapshot snap;
@@ -483,7 +524,7 @@ void SCREEN_HOT(loop1)(void) {
   updateLevelBars(currentMode, snap);
   updateADSRBars(snap);
   updateCalibrationUI(currentMode, snap);
-
+  updateGenericFocus(snap);
   uint32_t time_till_next = lv_timer_handler();
   if (time_till_next > 5) time_till_next = 5;
   if (time_till_next == 0) time_till_next = 1;

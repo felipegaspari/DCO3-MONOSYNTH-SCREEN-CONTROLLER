@@ -51,6 +51,10 @@ volatile InspectorType activeInspector = InspectorType::None;
 volatile uint32_t inspectorLastActivityMillis = 0;
 volatile bool inspectorActiveFlag = false;
 
+// --- Navigation State ---
+volatile uint8_t navMenuIndex = 0;
+volatile uint8_t activeMenuMode = 0;
+
 // ---------------------------------------------------------------------------
 // 4-Sample Moving Average Filter
 // ---------------------------------------------------------------------------
@@ -261,7 +265,8 @@ static void apply_param_ui_calibration_menu_mode(int32_t) {
 
 static void apply_param_ui_menu_position(int32_t v) {
   if (v < 0) v = 0;
-  calibrationMenuIndex = (uint8_t)v;
+  navMenuIndex = (uint8_t)v;
+  calibrationMenuIndex = (uint8_t)v; // Leave legacy hook intact for now
 }
 
 // =============================================================================
@@ -417,7 +422,7 @@ void screen_cache_param(uint8_t id, int32_t val) {
     case ParamId::PARAM_UI_MENU_POSITION:        apply_param_ui_menu_position(val); break;
     case ParamId::PARAM_UI_CALIBRATION_DISMISS:  apply_param_ui_calibration_dismiss(val); break;
     case ParamId::PARAM_UI_CALIBRATION_MENU_MODE:apply_param_ui_calibration_menu_mode(val); break;
-
+    case ParamId::PARAM_UI_MENU_MODE:            activeMenuMode = (uint8_t)val; break;
     default:
       break;
   }
