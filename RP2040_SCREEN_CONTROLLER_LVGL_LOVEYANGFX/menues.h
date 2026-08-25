@@ -22,9 +22,9 @@ extern const MenuScreenDef screenMenus[];
 
 extern lv_obj_t* ui_FullMenuPanel;
 extern lv_obj_t* ui_FullMenuTitle;
-extern lv_obj_t* ui_MenuRows[10];
-extern lv_obj_t* ui_MenuRowLabels[10];
-extern lv_obj_t* ui_MenuRowValues[10]; // NEW: Right-side inline values
+extern lv_obj_t* ui_MenuRows[16];
+extern lv_obj_t* ui_MenuRowLabels[16];
+extern lv_obj_t* ui_MenuRowValues[16];
 
 void setupMenues();
 void SCREEN_HOT(updateGenericFocus)(const Core1Snapshot &snap);

@@ -4,8 +4,41 @@
 #include "_build_libs/DCO-PROTOCOL/param_meta.h"
 #include "screen_target.h"
 
+
+LV_FONT_DECLARE(orbtiron_10);
+LV_FONT_DECLARE(orbtiron_12);
+LV_FONT_DECLARE(orbtiron_14);
+LV_FONT_DECLARE(orbtiron_16);
+LV_FONT_DECLARE(orbtiron_18);
+LV_FONT_DECLARE(orbtiron_20);
+LV_FONT_DECLARE(orbtiron_22);
+
+LV_FONT_DECLARE(roboto_10);
+LV_FONT_DECLARE(roboto_12);
+LV_FONT_DECLARE(roboto_14);
+LV_FONT_DECLARE(roboto_16);
+LV_FONT_DECLARE(roboto_18);
+LV_FONT_DECLARE(roboto_20);
+LV_FONT_DECLARE(roboto_22);
+
+LV_FONT_DECLARE(raj_10);
+LV_FONT_DECLARE(raj_12);
+LV_FONT_DECLARE(raj_14);
+LV_FONT_DECLARE(raj_16);
+LV_FONT_DECLARE(raj_18);
+LV_FONT_DECLARE(raj_20);
+LV_FONT_DECLARE(raj_22);
+LV_FONT_DECLARE(raj_24);
+
+LV_FONT_DECLARE(raj_med_18);
+LV_FONT_DECLARE(raj_med_20);
+LV_FONT_DECLARE(raj_med_22);
+LV_FONT_DECLARE(raj_med_24);
+LV_FONT_DECLARE(raj_med_26);
+LV_FONT_DECLARE(raj_med_28);
+
 // -----------------------------------------------------------------------------
-// FONT CONFIGURATION (Automatic fallback to larger fonts if available)
+// FONT CONFIGURATION
 // -----------------------------------------------------------------------------
 #if defined(LV_FONT_MONTSERRAT_18) && LV_FONT_MONTSERRAT_18
   #define MENU_TITLE_FONT &lv_font_montserrat_18
@@ -25,6 +58,8 @@
   #define MENU_ITEM_FONT LV_FONT_DEFAULT
 #endif
 
+#define MENU_TITLE_FONT &raj_med_28
+#define MENU_ITEM_FONT  &raj_med_26
 // -----------------------------------------------------------------------------
 // 1. MENU DEFINITIONS
 // -----------------------------------------------------------------------------
@@ -50,21 +85,22 @@ const MenuScreenDef screenMenus[] = {
         {"Envelope Mode",   ParamId::PARAM_ADSR2_MODE}
     }},
     
-    // Mode 4: ADSR 3
-    {"ADSR 3 (PITCH/PWM) SETTINGS", 8, {
+    // Mode 4: ADSR 3 
+    {"ADSR 3 (PITCH/PWM) SETTINGS", 9, {
         {"Attack Curve",      ParamId::PARAM_ADSR3_ATTACK_CURVE},
         {"Decay Curve",       ParamId::PARAM_ADSR3_DECAY_CURVE},
         {"Release Curve",     ParamId::PARAM_ADSR3_RELEASE_CURVE},
-        {"Env Enable",        ParamId::PARAM_ADSR3_ENABLED},
+        {"Env Restart",       ParamId::PARAM_ADSR3_RESTART},
         {"Envelope Mode",     ParamId::PARAM_ADSR3_MODE},
         {"Oscillator Select", ParamId::PARAM_ADSR3_TO_OSC_SELECT},
         {"Mod Depth -> PWM",  ParamId::PARAM_ADSR3_TO_PWM},
-        {"Mod Depth -> Pitch",ParamId::PARAM_ADSR3_TO_DETUNE1}
+        {"Mod Depth -> Pitch",ParamId::PARAM_ADSR3_TO_DETUNE1},
+        {"Env Enable",        ParamId::PARAM_ADSR3_ENABLED}
     }},
     
     {"SYSTEM SETTINGS", 1, {{"Placeholder", ParamId::PARAM_SINE_STATUS}}}, // Mode 5
 
-    // Mode 6: DCO MENU
+    // Mode 6: DCO ARCHITECTURE
 #if PROJECT_INSTRUMENT == 3
     {"DCO ARCHITECTURE", 8, {
         {"Voice Mode",        ParamId::PARAM_VOICE_MODE},
@@ -88,22 +124,35 @@ const MenuScreenDef screenMenus[] = {
     }},
 #endif
 
-    // Mode 7: DCO MOD MENU
+    // Mode 7: DCO MODULATION (Combined 14 / 9 items)
 #if PROJECT_INSTRUMENT == 3
-    {"DCO MODULATION", 6, {
+    {"DCO MODULATION", 14, {
         {"OSC 2 Detune",      ParamId::PARAM_OSC2_DETUNE_VAL},
         {"OSC 3 Detune",      ParamId::PARAM_OSC3_DETUNE_VAL},
         {"Unison Detune",     ParamId::PARAM_UNISON_DETUNE},
         {"Portamento Time",   ParamId::PARAM_PORTAMENTO_TIME},
         {"Portamento Mode",   ParamId::PARAM_PORTAMENTO_MODE},
-        {"Subosc Divide",     ParamId::PARAM_SUBOSC_DIVIDE}
+        {"Subosc Divide",     ParamId::PARAM_SUBOSC_DIVIDE},
+        {"LFO1 -> All DCOs",  ParamId::PARAM_LFO1_TO_DCO},
+        {"LFO1 -> OSC1",      ParamId::PARAM_LFO1_TO_OSC1},
+        {"LFO1 -> OSC2",      ParamId::PARAM_LFO1_TO_OSC2},
+        {"LFO1 -> OSC3",      ParamId::PARAM_LFO1_TO_OSC3},
+        {"LFO2 -> OSC2 Fine", ParamId::PARAM_LFO2_TO_OSC2},
+        {"LFO2 -> OSC3 Fine", ParamId::PARAM_LFO2_TO_OSC3},
+        {"LFO2 -> OSC2 Crse", ParamId::PARAM_LFO2_TO_OSC2_COARSE},
+        {"LFO2 -> OSC3 Crse", ParamId::PARAM_LFO2_TO_OSC3_COARSE}
     }},
 #else
-    {"DCO MODULATION", 4, {
+    {"DCO MODULATION", 9, {
         {"OSC 2 Detune",      ParamId::PARAM_OSC2_DETUNE_VAL},
         {"Unison Detune",     ParamId::PARAM_UNISON_DETUNE},
         {"Portamento Time",   ParamId::PARAM_PORTAMENTO_TIME},
-        {"Portamento Mode",   ParamId::PARAM_PORTAMENTO_MODE}
+        {"Portamento Mode",   ParamId::PARAM_PORTAMENTO_MODE},
+        {"LFO1 -> All DCOs",  ParamId::PARAM_LFO1_TO_DCO},
+        {"LFO1 -> OSC1",      ParamId::PARAM_LFO1_TO_OSC1},
+        {"LFO1 -> OSC2",      ParamId::PARAM_LFO1_TO_OSC2},
+        {"LFO2 -> OSC2 Fine", ParamId::PARAM_LFO2_TO_OSC2},
+        {"LFO2 -> OSC2 Crse", ParamId::PARAM_LFO2_TO_OSC2_COARSE}
     }},
 #endif
 
@@ -115,9 +164,9 @@ const MenuScreenDef screenMenus[] = {
 
 lv_obj_t* ui_FullMenuPanel = nullptr;
 lv_obj_t* ui_FullMenuTitle = nullptr;
-lv_obj_t* ui_MenuRows[10] = { nullptr };
-lv_obj_t* ui_MenuRowLabels[10] = { nullptr };
-lv_obj_t* ui_MenuRowValues[10] = { nullptr };
+lv_obj_t* ui_MenuRows[16] = { nullptr };
+lv_obj_t* ui_MenuRowLabels[16] = { nullptr };
+lv_obj_t* ui_MenuRowValues[16] = { nullptr };
 
 static uint8_t lastFocusedIndex = 255;
 static uint8_t lastMenuMode = 255;
@@ -145,13 +194,14 @@ static int32_t get_cached_param_value(ParamId id) {
         case ParamId::PARAM_ADSR3_ATTACK_CURVE:  return currentMixState.adsr3_attack_curve;
         case ParamId::PARAM_ADSR3_DECAY_CURVE:   return currentMixState.adsr3_decay_curve;
         case ParamId::PARAM_ADSR3_RELEASE_CURVE: return currentMixState.adsr3_release_curve;
-        case ParamId::PARAM_ADSR3_ENABLED:       return (currentMixState.misc_flags & (1<<3)) ? 1 : 0;
+        case ParamId::PARAM_ADSR3_RESTART:    return (currentMixState.misc_flags & (1<<3)) ? 1 : 0;
+        case ParamId::PARAM_ADSR3_ENABLED:       return (currentMixState.misc_flags & (1<<4)) ? 1 : 0;
         case ParamId::PARAM_ADSR3_MODE:          return currentLfoState.adsr3_mode;
         case ParamId::PARAM_ADSR3_TO_OSC_SELECT: return currentLfoState.adsr3_to_osc_select;
         case ParamId::PARAM_ADSR3_TO_PWM:        return currentLfoState.adsr3_to_pwm;
         case ParamId::PARAM_ADSR3_TO_DETUNE1:    return currentLfoState.adsr3_to_detune1;
 
-        // DCO Architecture & Mod
+        // DCO Architecture & Modulation
         case ParamId::PARAM_VOICE_MODE:          return currentOscState.voice_mode;
         case ParamId::PARAM_VOICE_ALLOC_MODE:    return currentOscState.voice_alloc_mode;
         case ParamId::PARAM_OSC1_INTERVAL:       return currentOscState.osc1_interval;
@@ -166,6 +216,16 @@ static int32_t get_cached_param_value(ParamId id) {
         case ParamId::PARAM_PORTAMENTO_TIME:     return currentOscState.portamento_time;
         case ParamId::PARAM_PORTAMENTO_MODE:     return currentOscState.portamento_mode;
         case ParamId::PARAM_SUBOSC_DIVIDE:       return currentOscState.subosc_divide;
+
+        // LFO Pitch Routes
+        case ParamId::PARAM_LFO1_TO_DCO:         return currentLfoState.lfo1_to_dco;
+        case ParamId::PARAM_LFO1_TO_OSC1:        return currentLfoState.lfo1_to_osc1;
+        case ParamId::PARAM_LFO1_TO_OSC2:        return currentLfoState.lfo1_to_osc2;
+        case ParamId::PARAM_LFO1_TO_OSC3:        return currentLfoState.lfo1_to_osc3;
+        case ParamId::PARAM_LFO2_TO_OSC2:        return currentLfoState.lfo2_to_osc2;
+        case ParamId::PARAM_LFO2_TO_OSC3:        return currentLfoState.lfo2_to_osc3;
+        case ParamId::PARAM_LFO2_TO_OSC2_COARSE: return currentLfoState.lfo2_to_osc2_coarse;
+        case ParamId::PARAM_LFO2_TO_OSC3_COARSE: return currentLfoState.lfo2_to_osc3_coarse;
 
         default: return 0;
     }
@@ -258,10 +318,9 @@ static void format_menu_value(ParamId id, int32_t val, char* buf, size_t maxlen)
 }
 
 // -----------------------------------------------------------------------------
-// 4. UI SETUP (Optimized for 8 slots in 480x320)
+// 4. UI SETUP (16 Rows with Auto-Scroll)
 // -----------------------------------------------------------------------------
 void setupMenues() {
-  // 1. Full-Screen Backdrop (480x320)
   ui_FullMenuPanel = lv_obj_create(lv_layer_top());
   lv_obj_remove_style_all(ui_FullMenuPanel);
   lv_obj_set_size(ui_FullMenuPanel, 480, 320);
@@ -271,13 +330,13 @@ void setupMenues() {
   lv_obj_clear_flag(ui_FullMenuPanel, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(ui_FullMenuPanel, LV_OBJ_FLAG_HIDDEN);
 
-  // 2. Header Title Bar (Larger Font, top aligned)
+  // Top Title
   ui_FullMenuTitle = lv_label_create(ui_FullMenuPanel);
   lv_obj_align(ui_FullMenuTitle, LV_ALIGN_TOP_MID, 0, 8);
   lv_obj_set_style_text_color(ui_FullMenuTitle, lv_color_hex(0xFF8800), 0);
   lv_obj_set_style_text_font(ui_FullMenuTitle, MENU_TITLE_FONT, 0);
 
-  // 3. List Container (464x278, fills entire vertical area)
+  // List Container (Scrollable when items > 8)
   lv_obj_t* listCont = lv_obj_create(ui_FullMenuPanel);
   lv_obj_remove_style_all(listCont);
   lv_obj_set_size(listCont, 464, 278);
@@ -285,11 +344,11 @@ void setupMenues() {
   lv_obj_set_style_bg_opa(listCont, LV_OPA_TRANSP, 0);
   lv_obj_set_layout(listCont, LV_LAYOUT_FLEX);
   lv_obj_set_flex_flow(listCont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(listCont, 3, 0); // Tight 3px gap
-  lv_obj_clear_flag(listCont, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_pad_row(listCont, 3, 0);
+  lv_obj_set_scrollbar_mode(listCont, LV_SCROLLBAR_MODE_AUTO);
 
-  // 4. Pre-create 10 Full-Width Menu Rows (456px wide x 31px high)
-  for(int i = 0; i < 10; i++) {
+  // Pre-create up to 16 Rows
+  for(int i = 0; i < 16; i++) {
     ui_MenuRows[i] = lv_obj_create(listCont);
     lv_obj_remove_style_all(ui_MenuRows[i]);
     lv_obj_set_size(ui_MenuRows[i], 456, 31);
@@ -298,13 +357,13 @@ void setupMenues() {
     lv_obj_set_style_radius(ui_MenuRows[i], 5, 0);
     lv_obj_clear_flag(ui_MenuRows[i], LV_OBJ_FLAG_SCROLLABLE);
 
-    // Left Setting Name
+    // Left Name
     ui_MenuRowLabels[i] = lv_label_create(ui_MenuRows[i]);
     lv_obj_align(ui_MenuRowLabels[i], LV_ALIGN_LEFT_MID, 12, 0);
     lv_obj_set_style_text_color(ui_MenuRowLabels[i], lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(ui_MenuRowLabels[i], MENU_ITEM_FONT, 0);
 
-    // Right Live Value
+    // Right Value
     ui_MenuRowValues[i] = lv_label_create(ui_MenuRows[i]);
     lv_obj_align(ui_MenuRowValues[i], LV_ALIGN_RIGHT_MID, -12, 0);
     lv_obj_set_style_text_color(ui_MenuRowValues[i], lv_color_hex(0x00E5A3), 0);
@@ -332,12 +391,17 @@ void SCREEN_HOT(updateGenericFocus)(const Core1Snapshot &snap) {
   uint8_t modeIdx = (snap.activeMenuMode < TOTAL_MENUS) ? snap.activeMenuMode : 0;
   const MenuScreenDef& def = screenMenus[modeIdx];
 
-  // Mode change: update titles and hide/show rows
+  // Mode change
   if (lastMenuMode != snap.activeMenuMode) {
     lastMenuMode = snap.activeMenuMode;
     lv_label_set_text(ui_FullMenuTitle, def.title);
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 16; i++) {
+      // Clean all rows so no ghost highlight persists
+      lv_obj_set_style_bg_color(ui_MenuRows[i], lv_color_hex(0x1B1B1B), 0);
+      lv_obj_set_style_text_color(ui_MenuRowLabels[i], lv_color_hex(0xFFFFFF), 0);
+      lv_obj_set_style_text_color(ui_MenuRowValues[i], lv_color_hex(0x00E5A3), 0);
+
       if (i < def.count) {
         lv_label_set_text(ui_MenuRowLabels[i], def.items[i].label);
         lv_obj_remove_flag(ui_MenuRows[i], LV_OBJ_FLAG_HIDDEN);
@@ -348,18 +412,18 @@ void SCREEN_HOT(updateGenericFocus)(const Core1Snapshot &snap) {
     lastFocusedIndex = 255;
   }
 
-  // Cursor focus update (Active row turns neon green with black text)
+  // Cursor focus & Auto-Scroll
   if (lastFocusedIndex != snap.navMenuIndex) {
-    if (lastFocusedIndex < 10) {
+    if (lastFocusedIndex < 16) {
       lv_obj_set_style_bg_color(ui_MenuRows[lastFocusedIndex], lv_color_hex(0x1B1B1B), 0);
       lv_obj_set_style_text_color(ui_MenuRowLabels[lastFocusedIndex], lv_color_hex(0xFFFFFF), 0);
       lv_obj_set_style_text_color(ui_MenuRowValues[lastFocusedIndex], lv_color_hex(0x00E5A3), 0);
     }
-    if (snap.navMenuIndex < 10 && snap.navMenuIndex < def.count) {
+    if (snap.navMenuIndex < 16 && snap.navMenuIndex < def.count) {
       lv_obj_set_style_bg_color(ui_MenuRows[snap.navMenuIndex], lv_color_hex(0x00FF88), 0);
       lv_obj_set_style_text_color(ui_MenuRowLabels[snap.navMenuIndex], lv_color_hex(0x000000), 0);
       lv_obj_set_style_text_color(ui_MenuRowValues[snap.navMenuIndex], lv_color_hex(0x000000), 0);
-      lv_obj_scroll_to_view(ui_MenuRows[snap.navMenuIndex], LV_ANIM_OFF);
+      lv_obj_scroll_to_view(ui_MenuRows[snap.navMenuIndex], LV_ANIM_ON);
     }
     lastFocusedIndex = snap.navMenuIndex;
   }
