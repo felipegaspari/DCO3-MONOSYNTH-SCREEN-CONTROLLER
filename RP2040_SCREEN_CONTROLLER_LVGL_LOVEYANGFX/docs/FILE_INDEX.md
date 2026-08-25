@@ -347,8 +347,8 @@ Param → model router + LVGL label/bar draw helpers + human-readable `paramName
 | 4 | `PARAM_SINE_STATUS` | `SINE (unused)` | — | — |
 | 5–6 | *(unused / reserved)* | — | — | — |
 | 7 | `PARAM_RESONANCE_COMPENSATION` | `ResoAmpComp` | — | — |
-| 8 | `PARAM_VCA_ADSR_RESTART` | `ADSR1 Restart` | — | — |
-| 9 | `PARAM_VCF_ADSR_RESTART` | `ADSR2 Restart` | — | — |
+| 8 | `PARAM_ADSR1_RESTART` | `ADSR1 Restart` | — | — |
+| 9 | `PARAM_ADSR2_RESTART` | `ADSR2 Restart` | — | — |
 | 10 | `PARAM_ADSR3_TO_OSC_SELECT` | ADSR3 TO OSC1 / OSC2 / BOTH | — | — |
 | 11 | `PARAM_LFO1_WAVEFORM` | `LFO1 Shape` | — | — |
 | 12 | `PARAM_LFO2_WAVEFORM` | `LFO2 Shape` | — | — |

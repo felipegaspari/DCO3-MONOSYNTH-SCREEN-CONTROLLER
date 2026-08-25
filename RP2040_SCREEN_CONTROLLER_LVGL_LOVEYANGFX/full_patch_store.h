@@ -86,7 +86,9 @@ void ui_inspect_full_patch_state() {
   int16_t  env1ToVCA      = lfo.adsr1_to_vca;
   int16_t  env3ToPwm      = lfo.adsr3_to_pwm;     // Centered at 512
   int16_t  env3ToPitch    = lfo.adsr3_to_detune1;
-  bool     env3Centered   = (lfo.adsr3_pitch_mode != 0); // true = ±2 oct centered
+  uint8_t  adsr3Mode     = lfo.adsr3_mode; 
+  uint8_t  adsr2Mode     = lfo.adsr2_mode;
+  uint8_t  adsr1Mode     = lfo.adsr1_mode; 
   int8_t   env3OscTarget  = lfo.adsr3_to_osc_select;     // 0=Both, 1=OSC1, 2=OSC2
 
   // =========================================================================
@@ -268,9 +270,9 @@ misc_flags Bitmask Breakdown:
 
     1 << 0: PARAM_RESONANCE_COMPENSATION (Bass retention under high resonance)
 
-    1 << 1: PARAM_VCA_ADSR_RESTART (Env1 resets to zero on retrigger)
+    1 << 1: PARAM_ADSR1_RESTART (Env1 resets to zero on retrigger)
 
-    1 << 2: PARAM_VCF_ADSR_RESTART (Env2 resets to zero on retrigger)
+    1 << 2: PARAM_ADSR2_RESTART (Env2 resets to zero on retrigger)
 
     1 << 3: PARAM_ADSR3_ENABLED (Env3 / Pitch envelope active flag)
 */

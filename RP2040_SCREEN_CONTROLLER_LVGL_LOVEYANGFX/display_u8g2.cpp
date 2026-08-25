@@ -251,7 +251,7 @@ static void draw_inspector_adsr(uint8_t envNum, const PatchMixBlock& mix, uint16
     bool vcfRst = mix.misc_flags & (1 << 2);
     snprintf(buf, sizeof(buf), "VEL->VCF: %+d      RESTART: [%s]", mix.velocity_to_vcf, vcfRst ? "ON" : "OFF");
   } else {
-    snprintf(buf, sizeof(buf), "DEST: PWM:%+d  PITCH:%+d  MOD:%d", lfo.adsr3_to_pwm - 512, lfo.adsr3_to_detune1, lfo.adsr3_pitch_mode);
+    snprintf(buf, sizeof(buf), "DEST: PWM:%+d  PITCH:%+d  MOD:%d", lfo.adsr3_to_pwm - 512, lfo.adsr3_to_detune1, lfo.adsr3_mode);
   }
   u8g2.drawStr(2, 60, buf);
 }

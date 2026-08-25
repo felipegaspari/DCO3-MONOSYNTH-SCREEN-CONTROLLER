@@ -36,6 +36,10 @@ volatile uint16_t ADSR2Decay = 0;
 volatile uint16_t ADSR2Sustain = 0;
 volatile uint16_t ADSR2Release = 0;
 
+volatile uint8_t adsr1Mode = 0;
+volatile uint8_t adsr2Mode = 0;
+volatile uint8_t adsr3Mode = 0;
+
 // --- Global Patch State Cache (Resident in Screen RAM) ---
 PatchOscBlock currentOscState;
 PatchLfoBlock currentLfoState;
@@ -324,11 +328,12 @@ void screen_cache_param(uint8_t id, int32_t val) {
     case ParamId::PARAM_OSC2_INTERVAL:       currentOscState.osc2_interval       = (int8_t)val; break;
     case ParamId::PARAM_OSC3_INTERVAL:       currentOscState.osc3_interval       = (int8_t)val; break;
     case ParamId::PARAM_OSC2_DETUNE_VAL:     currentOscState.osc2_detune         = (uint16_t)val; break;
+    case ParamId::PARAM_OSC3_DETUNE_VAL:     currentOscState.osc3_detune         = (uint16_t)val; break;
     case ParamId::PARAM_UNISON_DETUNE:       currentOscState.unison_detune       = (int16_t)val; break;
     case ParamId::PARAM_VOICE_MODE:          currentOscState.voice_mode          = (uint8_t)val; break;
     case ParamId::PARAM_VOICE_ALLOC_MODE:    currentOscState.voice_alloc_mode    = (uint8_t)val; break;
-    case ParamId::PARAM_SYNC_MODE:
-    case ParamId::PARAM_OSC_PHASE_SYNC:       currentOscState.sync_mode           = (uint8_t)val; break;
+    case ParamId::PARAM_SYNC_MODE:           currentOscState.sync_mode           = (uint8_t)val; break;
+    case ParamId::PARAM_OSC_PHASE_SYNC:      currentOscState.osc_phase_sync      = (uint16_t)val; break;
     case ParamId::PARAM_SOFT_SYNC:           currentOscState.soft_sync           = (uint8_t)val; break;
     case ParamId::PARAM_SUBOSC_DIVIDE:       currentOscState.subosc_divide       = (uint8_t)val; break;
     case ParamId::PARAM_ANALOG_DRIFT_AMOUNT: currentOscState.analog_drift        = (int8_t)val; break;
@@ -341,8 +346,10 @@ void screen_cache_param(uint8_t id, int32_t val) {
     // --- LFOs & Envelopes (PatchLfoBlock) ---
     case ParamId::PARAM_LFO1_WAVEFORM:       currentLfoState.lfo1_waveform       = (uint8_t)val; break;
     case ParamId::PARAM_LFO2_WAVEFORM:       currentLfoState.lfo2_waveform       = (uint8_t)val; break;
+    case ParamId::PARAM_LFO3_WAVEFORM:       currentLfoState.lfo3_waveform       = (uint8_t)val; break;
     case ParamId::PARAM_LFO1_SPEED:          currentLfoState.lfo1_speed          = (uint16_t)val; break;
     case ParamId::PARAM_LFO2_SPEED:          currentLfoState.lfo2_speed          = (uint16_t)val; break;
+    case ParamId::PARAM_LFO3_SPEED:          currentLfoState.lfo3_speed          = (uint16_t)val; break;
     case ParamId::PARAM_LFO1_TO_DCO:         currentLfoState.lfo1_to_dco         = (uint16_t)val; break;
     case ParamId::PARAM_LFO1_TO_OSC1:        currentLfoState.lfo1_to_osc1        = (uint8_t)val; break;
     case ParamId::PARAM_LFO1_TO_OSC2:        currentLfoState.lfo1_to_osc2        = (uint8_t)val; break;
@@ -360,7 +367,6 @@ void screen_cache_param(uint8_t id, int32_t val) {
       break;
     case ParamId::PARAM_ADSR3_TO_PWM:        currentLfoState.adsr3_to_pwm        = (int16_t)val; break;
     case ParamId::PARAM_ADSR3_TO_DETUNE1:    currentLfoState.adsr3_to_detune1    = (int16_t)val; break;
-    case ParamId::PARAM_ADSR3_PITCH_MODE:    currentLfoState.adsr3_pitch_mode    = (uint8_t)val; break;
     case ParamId::PARAM_ADSR3_TO_OSC_SELECT: currentLfoState.adsr3_to_osc_select = (int8_t)val; break;
 
     // --- Mixer, Filter & Dynamics (PatchMixBlock) ---
@@ -388,22 +394,41 @@ void screen_cache_param(uint8_t id, int32_t val) {
     case ParamId::PARAM_VCF_KEYTRACK:        currentMixState.vcf_keytrack        = (int16_t)val; break;
     case ParamId::PARAM_DIST_DRIVE:          currentMixState.dist_drive          = (uint16_t)val; break;
     case ParamId::PARAM_DIST_MIX:            currentMixState.dist_mix            = (uint16_t)val; break;
+
+    // --- Mixer, Curves & Dynamics (PatchMixBlock) ---
     case ParamId::PARAM_ADSR1_ATTACK_CURVE:  currentMixState.adsr1_attack_curve  = (uint8_t)val; break;
     case ParamId::PARAM_ADSR1_DECAY_CURVE:   currentMixState.adsr1_decay_curve   = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR1_RELEASE_CURVE: currentMixState.adsr1_release_curve = (uint8_t)val; break;
+    
     case ParamId::PARAM_ADSR2_ATTACK_CURVE:  currentMixState.adsr2_attack_curve  = (uint8_t)val; break;
     case ParamId::PARAM_ADSR2_DECAY_CURVE:   currentMixState.adsr2_decay_curve   = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR2_RELEASE_CURVE: currentMixState.adsr2_release_curve = (uint8_t)val; break;
+
+    case ParamId::PARAM_ADSR3_ATTACK_CURVE:  currentMixState.adsr3_attack_curve  = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR3_DECAY_CURVE:   currentMixState.adsr3_decay_curve   = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR3_RELEASE_CURVE: currentMixState.adsr3_release_curve = (uint8_t)val; break;
+
+    case ParamId::PARAM_VCF_TRIGGER_MODE:    currentMixState.vcf_trigger_mode    = (uint8_t)val; break;
+
+    // --- Envelope Modes ---
+    case ParamId::PARAM_ADSR1_MODE:          currentMixState.adsr1_mode          = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR2_MODE:          currentMixState.adsr2_mode          = (uint8_t)val; break;
+    case ParamId::PARAM_ADSR3_MODE:          currentLfoState.adsr3_mode          = (uint8_t)val; break;
 
     case ParamId::PARAM_RESONANCE_COMPENSATION:
       if (val) currentMixState.misc_flags |= (1 << 0); else currentMixState.misc_flags &= ~(1 << 0);
       break;
-    case ParamId::PARAM_VCA_ADSR_RESTART:
+    case ParamId::PARAM_ADSR1_RESTART:
       if (val) currentMixState.misc_flags |= (1 << 1); else currentMixState.misc_flags &= ~(1 << 1);
       break;
-    case ParamId::PARAM_VCF_ADSR_RESTART:
+    case ParamId::PARAM_ADSR2_RESTART:
       if (val) currentMixState.misc_flags |= (1 << 2); else currentMixState.misc_flags &= ~(1 << 2);
       break;
-    case ParamId::PARAM_ADSR3_ENABLED:
+    case ParamId::PARAM_ADSR3_RESTART:
       if (val) currentMixState.misc_flags |= (1 << 3); else currentMixState.misc_flags &= ~(1 << 3);
+      break;
+    case ParamId::PARAM_ADSR3_ENABLED:
+      if (val) currentMixState.misc_flags |= (1 << 3); else currentMixState.misc_flags &= ~(1 << 4);
       break;
 
     // --- UI-Specific Parameters for OLED Filter HUD ---
@@ -532,32 +557,34 @@ void setDisplayParam() {
 InspectorType get_param_inspector_type(ParamId id) {
   switch (id) {
     // Envelope 1 (VCA)
-    case ParamId::PARAM_VCA_ADSR_RESTART:
+    case ParamId::PARAM_ADSR1_RESTART:
     case ParamId::PARAM_ADSR1_ATTACK_CURVE:
     case ParamId::PARAM_ADSR1_DECAY_CURVE:
     case ParamId::PARAM_ADSR1_RELEASE_CURVE:
     case ParamId::PARAM_ADSR1_TO_VCA:
+    case ParamId::PARAM_ADSR1_MODE:
       return InspectorType::ADSR1;
 
     // Envelope 2 (VCF)
-    case ParamId::PARAM_VCF_ADSR_RESTART:
+    case ParamId::PARAM_ADSR2_RESTART:
     case ParamId::PARAM_ADSR2_ATTACK_CURVE:
     case ParamId::PARAM_ADSR2_DECAY_CURVE:
-    case ParamId::PARAM_ADSR2_RELEASE_CURVE:
+    case ParamId::PARAM_ADSR2_RELEASE_CURVE:  
+    case ParamId::PARAM_ADSR2_MODE:
     case ParamId::PARAM_VCF_TRIGGER_MODE:
     case ParamId::PARAM_UI_ADSR2_TO_VCF:
       return InspectorType::ADSR2;
 
     // Envelope 3 (Pitch/PWM)
+    case ParamId::PARAM_ADSR3_RESTART:
     case ParamId::PARAM_ADSR3_TO_OSC_SELECT:
     case ParamId::PARAM_ADSR3_TO_PWM:
     case ParamId::PARAM_ADSR3_TO_DETUNE1:
     case ParamId::PARAM_ADSR3_ENABLED:
-    case ParamId::PARAM_ADSR3_RESTART:
-    case ParamId::PARAM_ADSR3_PITCH_MODE:
+    case ParamId::PARAM_ADSR3_MODE:
     case ParamId::PARAM_ADSR3_ATTACK_CURVE:
     case ParamId::PARAM_ADSR3_DECAY_CURVE:
-    case ParamId::PARAM_ADSR3_RELEASE_CURVE:    
+    case ParamId::PARAM_ADSR3_RELEASE_CURVE:
       return InspectorType::ADSR3;
 
     // Filter (VCF)
