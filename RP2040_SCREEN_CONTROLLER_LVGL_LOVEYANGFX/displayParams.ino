@@ -256,7 +256,8 @@ static void apply_param_cal_pw_center(int32_t v) {
 }
 
 static void apply_param_ui_calibration_dismiss(int32_t) {
-  if (serialSignal == screen_mode_raw(ScreenMode::CalibrationMenu)) {
+  if (serialSignal == screen_mode_raw(ScreenMode::CalibrationMenu) ||
+      serialSignal == screen_mode_raw(ScreenMode::ManualCalibration)) {
     serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
     signalFlag = true;
   }

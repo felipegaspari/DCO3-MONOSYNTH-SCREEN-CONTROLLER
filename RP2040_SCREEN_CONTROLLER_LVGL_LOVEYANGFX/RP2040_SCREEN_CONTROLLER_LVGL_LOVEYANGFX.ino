@@ -24,7 +24,12 @@
 static const uint16_t screenWidth = 480;
 static const uint16_t screenHeight = 320;
 
+#if defined(PICO_RP2350)
+enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 4 };
+#else 
 enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 8 };
+#endif
+
 static lv_color_t buf1[SCREENBUFFER_SIZE_PIXELS];
 static lv_color_t buf2[SCREENBUFFER_SIZE_PIXELS];
 
