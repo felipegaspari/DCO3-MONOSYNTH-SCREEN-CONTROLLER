@@ -198,19 +198,21 @@ void apply_param_sub_level(int32_t v) {
 }
 
 static void apply_param_calibration_flag(int32_t v) {
-  switch (v) {
-    case 0: serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit); break;
-    case 1: serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu); break;
-    default: return;
+  if (v == 0) {
+    // When calibration completes, DCO returns 0. Exit all UIs.
+    activeMenuMode = 0; 
+    serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
+    signalFlag = true;
   }
-  signalFlag = true;
 }
 
 static void apply_param_manual_calibration_flag(int32_t v) {
-  switch (v) {
-    case 1: serialSignal = screen_mode_raw(ScreenMode::ManualCalibration); break;
-    case 0: serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu); break;
-    default: return;
+  if (v == 1) {
+    activeMenuMode = 0; // Hide the generic menu overlay
+    serialSignal = screen_mode_raw(ScreenMode::ManualCalibration);
+  } else {
+    activeMenuMode = 10; // Restore the generic menu overlay
+    serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
   }
   signalFlag = true;
 }
@@ -256,6 +258,7 @@ static void apply_param_cal_pw_center(int32_t v) {
 }
 
 static void apply_param_ui_calibration_dismiss(int32_t) {
+  activeMenuMode = 0; // Hide the generic menu
   if (serialSignal == screen_mode_raw(ScreenMode::CalibrationMenu) ||
       serialSignal == screen_mode_raw(ScreenMode::ManualCalibration)) {
     serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
@@ -263,8 +266,14 @@ static void apply_param_ui_calibration_dismiss(int32_t) {
   }
 }
 
-static void apply_param_ui_calibration_menu_mode(int32_t) {
-  serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
+static void apply_param_ui_calibration_menu_mode(int32_t v) {
+  if (v == 1) {
+    activeMenuMode = 10; // Trigger Mode 10 (Calibration Menu)
+    serialSignal = screen_mode_raw(ScreenMode::CalibrationMenu);
+  } else {
+    activeMenuMode = 0;
+    serialSignal = screen_mode_raw(ScreenMode::LoadSaveExit);
+  }
   signalFlag = true;
 }
 

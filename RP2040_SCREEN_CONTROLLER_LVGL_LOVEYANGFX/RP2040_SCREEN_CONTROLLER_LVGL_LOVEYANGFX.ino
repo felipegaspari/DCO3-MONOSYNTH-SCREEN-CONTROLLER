@@ -27,7 +27,7 @@ static const uint16_t screenHeight = 320;
 #if defined(PICO_RP2350)
 enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 4 };
 #else 
-enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 8 };
+enum { SCREENBUFFER_SIZE_PIXELS = screenWidth * screenHeight / 10 };
 #endif
 
 static lv_color_t buf1[SCREENBUFFER_SIZE_PIXELS];
@@ -126,7 +126,20 @@ static inline void SCREEN_HOT(captureCore1Snapshot)(Core1Snapshot &snap) {
 }
 
 void setup() {
+  if (!TinyUSBDevice.isInitialized()) {
+    TinyUSBDevice.begin(0);
+  }
   Serial.begin(2000000);
+#if PROJECT_INSTRUMENT == 4
+  TinyUSBDevice.setManufacturerDescriptor("DCO4");
+  TinyUSBDevice.setProductDescriptor("DCO4 Screen");
+#else
+  TinyUSBDevice.setManufacturerDescriptor("DCO3");
+  TinyUSBDevice.setProductDescriptor("DCO3 Screen");
+#endif
+  TinyUSBDevice.detach();
+  delay(10);
+  TinyUSBDevice.attach();
 
 #if SCREEN_HAS_MB_PEER
   SCREEN_MB_PORT.setRX(SCREEN_MB_RX_PIN);
@@ -164,6 +177,7 @@ void setup1() {
 
   ui_init();
   setupMenues();
+  setupModMatrix();
 
   lv_obj_set_style_text_opa(ui_PresetN, LV_OPA_COVER, (lv_style_selector_t)(LV_PART_MAIN | LV_STATE_DEFAULT));
   lv_obj_add_flag(ui_PresetNShadow, LV_OBJ_FLAG_HIDDEN);

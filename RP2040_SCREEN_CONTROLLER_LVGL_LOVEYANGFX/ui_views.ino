@@ -117,11 +117,10 @@ void SCREEN_HOT(handleScreenModeChange)(const Core1Snapshot &snap) {
       silentModeEnteredMillis = millis();
       break;
 
-    case ScreenMode::CalibrationMenu:
+      case ScreenMode::CalibrationMenu:
       if (ui_calGapTrack) lv_obj_add_flag(ui_calGapTrack, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(ui_manualCalibrationPanel, LV_OBJ_FLAG_HIDDEN);
-      lv_scr_load(ui_MANUALCALIBRATION);
-      lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF);
+      lv_scr_load(ui_Main); // Just load the main UI, the UIState menu overlay handles the rest!
       break;
 
     case ScreenMode::ManualCalibration:
@@ -151,6 +150,9 @@ void SCREEN_HOT(expireSilentMode)(const Core1Snapshot &snap) {
 }
 
 void SCREEN_HOT(updateBottomMessageAndPresetUI)(ScreenMode mode, const Core1Snapshot &snap) {
+  // If a full-screen menu is open, don't waste time drawing background toasts!
+  if (snap.activeMenuMode != 0) return; 
+
   if (static_cast<uint8_t>(mode) > static_cast<uint8_t>(ScreenMode::SaveCompleted)) return;
 
   uint32_t now = millis();
@@ -222,10 +224,7 @@ void SCREEN_HOT(updateADSRBars)(const Core1Snapshot &snap) {
 
 void SCREEN_HOT(updateCalibrationUI)(ScreenMode mode, const Core1Snapshot &snap) {
   if (mode == ScreenMode::CalibrationMenu) {
-    if (snap.calMenuIndex != lastRenderedMenuIndex) {
-      lastRenderedMenuIndex = snap.calMenuIndex;
-      lv_tabview_set_active(ui_calibrationTabs, snap.calMenuIndex, LV_ANIM_OFF);
-    }
+    // No longer using lv_tabview. Handled entirely by the generic UIState menu overlay.
     return;
   }
 

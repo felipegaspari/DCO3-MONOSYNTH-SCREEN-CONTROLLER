@@ -2,6 +2,9 @@
 #include <hardware/spi.h>
 #include <hardware/gpio.h>
 #include <string.h>
+#include "_build_libs/DCO-PROTOCOL/param_meta.h" 
+#include "menues.h"
+
 
 // ---------------------------------------------------------------------------
 // Hardware SPI1 Callback (Zero SPI0 Collision)
@@ -51,7 +54,8 @@ static uint8_t       lastPresetNum = 255;
 static char          lastPresetName[17] = "";
 static ScreenMode    lastScreenMode = static_cast<ScreenMode>(255);
 static InspectorType lastActiveInsp = InspectorType::None;
-static uint8_t       lastCalMenuIndex = 255;
+static uint8_t       lastMenuMode = 255;
+static uint8_t       lastNavIdx = 255;
 static uint8_t       lastCalStage = 255;
 static int32_t       lastCalGap = -999999;
 static int32_t       lastCutoff = -1;
@@ -76,7 +80,7 @@ void init_u8g2() {
 // ---------------------------------------------------------------------------
 // Drawing Primitives
 // ---------------------------------------------------------------------------
-static void draw_meter_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t val, uint8_t maxVal = 128) {
+static void draw_meter_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint16_t val, uint16_t maxVal = 128) {
   u8g2.drawFrame(x, y, w, h);
   if (val > 0 && maxVal > 0) {
     uint8_t fillW = ((uint16_t)val * (w - 2)) / maxVal;
@@ -85,7 +89,7 @@ static void draw_meter_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t v
   }
 }
 
-static void draw_bipolar_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, int16_t val, int16_t maxVal) {
+static void SCREEN_HOT(draw_bipolar_bar)(uint8_t x, uint8_t y, uint8_t w, uint8_t h, int16_t val, int16_t maxVal) {
   u8g2.drawFrame(x, y, w, h);
   uint8_t cx = x + (w / 2);
   u8g2.drawVLine(cx, y + 1, h - 2);
@@ -103,7 +107,7 @@ static void draw_bipolar_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, int16_t
 // ---------------------------------------------------------------------------
 // INSPECTOR: FILTER
 // ---------------------------------------------------------------------------
-static void draw_inspector_filter(const PatchMixBlock& mix) {
+static void SCREEN_HOT(draw_inspector_filter)(const PatchMixBlock& mix) {
   u8g2.setFont(u8g2_font_6x10_tf);
   const char* fModeStr = "4P LOWPASS";
   if (mix.filter_mode == 1) fModeStr = "2P LOWPASS";
@@ -155,7 +159,7 @@ static void draw_inspector_filter(const PatchMixBlock& mix) {
 // ---------------------------------------------------------------------------
 // INSPECTOR: OSCILLATORS
 // ---------------------------------------------------------------------------
-static void draw_inspector_osc(const PatchOscBlock& osc, const PatchMixBlock& mix, const PatchLfoBlock& lfo) {
+static void SCREEN_HOT(draw_inspector_osc)(const PatchOscBlock& osc, const PatchMixBlock& mix, const PatchLfoBlock& lfo) {
   u8g2.setFont(u8g2_font_6x10_tf);
   u8g2.drawStr(2, 9, "OSC ENGINE");
 
@@ -188,7 +192,7 @@ static void draw_inspector_osc(const PatchOscBlock& osc, const PatchMixBlock& mi
 // ---------------------------------------------------------------------------
 // INSPECTOR: ENVELOPES (ADSR)
 // ---------------------------------------------------------------------------
-static void draw_inspector_adsr(uint8_t envNum, const PatchMixBlock& mix, uint16_t a, uint16_t d, uint16_t s, uint16_t r, const PatchLfoBlock& lfo) {
+static void SCREEN_HOT(draw_inspector_adsr)(uint8_t envNum, const PatchMixBlock& mix, uint16_t a, uint16_t d, uint16_t s, uint16_t r, const PatchLfoBlock& lfo) {
   u8g2.setFont(u8g2_font_6x10_tf);
   char title[32];
   snprintf(title, sizeof(title), "ENV %u", envNum);
@@ -258,7 +262,7 @@ static void draw_inspector_adsr(uint8_t envNum, const PatchMixBlock& mix, uint16
 // ---------------------------------------------------------------------------
 // INSPECTOR: LFO
 // ---------------------------------------------------------------------------
-static void draw_inspector_lfo(uint8_t lfoNum, const PatchLfoBlock& lfo) {
+static void SCREEN_HOT(draw_inspector_lfo)(uint8_t lfoNum, const PatchLfoBlock& lfo) {
   u8g2.setFont(u8g2_font_6x10_tf);
   char title[16]; snprintf(title, sizeof(title), "LFO %u MOD", lfoNum);
   u8g2.drawStr(2, 9, title);
@@ -321,7 +325,7 @@ static void draw_inspector_lfo(uint8_t lfoNum, const PatchLfoBlock& lfo) {
 // ---------------------------------------------------------------------------
 // INSPECTOR: VOICE ENGINE
 // ---------------------------------------------------------------------------
-static void draw_inspector_voice(const PatchOscBlock& osc) {
+static void SCREEN_HOT(draw_inspector_voice)(const PatchOscBlock& osc) {
   u8g2.setFont(u8g2_font_6x10_tf);
   const char* vMode = (osc.voice_mode == 0) ? "[MONO]" : (osc.voice_mode == 1) ? "[POLY]" : "[UNISON]";
   u8g2.drawStr(2, 9, "VOICE ENGINE");
@@ -359,7 +363,7 @@ static void draw_inspector_voice(const PatchOscBlock& osc) {
 // ---------------------------------------------------------------------------
 // IDLE DASHBOARD: ENHANCED PRESET VIEW
 // ---------------------------------------------------------------------------
-static void draw_view_preset_enhanced(const Core1Snapshot& snap, const PatchOscBlock& osc, const PatchMixBlock& mix, const PatchModBlock& mod) {
+static void SCREEN_HOT(draw_view_preset_enhanced)(const Core1Snapshot& snap, const PatchOscBlock& osc, const PatchMixBlock& mix, const PatchModBlock& mod) {
   u8g2.setFont(u8g2_font_6x10_tf);
   char header[24];
   snprintf(header, sizeof(header), "P%02u: %s", snap.presetNum, snap.presetName);
@@ -396,54 +400,93 @@ static void draw_view_preset_enhanced(const Core1Snapshot& snap, const PatchOscB
   u8g2.drawStr(2, 58, buf);
 }
 
+
 // ---------------------------------------------------------------------------
 // MENUS & CALIBRATION
 // ---------------------------------------------------------------------------
-static void draw_view_cal_menu(uint8_t tabIndex) {
+static void SCREEN_HOT(draw_view_mod_matrix)(uint8_t slotIdx, const PatchModBlock& mod) {
+  if (slotIdx > 7) slotIdx = 7;
+  
   u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.drawStr(2, 9, "CALIBRATION MENU");
+  u8g2.drawStr(2, 9, "MOD MATRIX");
+  
+  char buf[32];
+  snprintf(buf, sizeof(buf), "SLOT %u/8", slotIdx + 1);
+  u8g2.drawStr(128 - u8g2.getStrWidth(buf) - 2, 9, buf);
   u8g2.drawHLine(0, 11, 128);
 
-  // Exact Calibration Menu Tabs
-  static const char* calTabs[] = {
-    "1. AMP COMP",
-    "2. PW",
-    "3. FULL",
-    "4. MANUAL",
-    "5. FAST FULL"
-  };
-  const uint8_t totalTabs = 5;
-  uint8_t activeTab = tabIndex % totalTabs;
+  const auto& slot = mod.slots[slotIdx];
+  
+  u8g2.setFont(u8g2_font_5x7_tf);
+  snprintf(buf, sizeof(buf), "SRC: %s", param_mod_source_name(slot.src));
+  u8g2.drawStr(4, 24, buf);
 
-  // Windowed view to display 3 lines cleanly on 128x64
+  snprintf(buf, sizeof(buf), "DST: %s", param_mod_dest_name(slot.dest));
+  u8g2.drawStr(4, 36, buf);
+
+  snprintf(buf, sizeof(buf), "AMT: %+d", (int)slot.depth);
+  u8g2.drawStr(4, 48, buf);
+
+  draw_bipolar_bar(64, 42, 60, 7, slot.depth, 4096);
+  
+  u8g2.drawHLine(0, 52, 128);
+  u8g2.setFont(u8g2_font_4x6_tf);
+  u8g2.drawStr(2, 60, "SELECT TO EDIT");
+}
+static void SCREEN_HOT(draw_view_generic_menu)(uint8_t modeIdx, uint8_t navIndex, const PatchOscBlock& oscSnap, const PatchMixBlock& mixSnap, const PatchLfoBlock& lfoSnap) {
+  if (modeIdx > 10) return;
+  const MenuScreenDef& def = screenMenus[modeIdx];
+
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(2, 9, def.title);
+  u8g2.drawHLine(0, 11, 128);
+
+  if (def.count == 0) {
+    u8g2.drawStr(2, 30, "No Items");
+    return;
+  }
+
+  uint8_t activeTab = (navIndex < def.count) ? navIndex : def.count - 1;
+
   uint8_t startIdx = 0;
   if (activeTab >= 2) {
     startIdx = activeTab - 1;
-    if (startIdx + 3 > totalTabs) startIdx = totalTabs - 3;
+    if (startIdx + 3 > def.count) {
+      startIdx = (def.count > 3) ? def.count - 3 : 0;
+    }
   }
 
-  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.setFont(u8g2_font_5x7_tf);
   for (uint8_t i = 0; i < 3; ++i) {
     uint8_t idx = startIdx + i;
-    uint8_t y = 24 + (i * 11);
+    if (idx >= def.count) break;
+
+    uint8_t y = 24 + (i * 12);
+
+    int32_t val = get_cached_param_value(def.items[idx].id, oscSnap, mixSnap, lfoSnap);
+    char valBuf[16];
+    format_menu_value(def.items[idx].id, val, valBuf, sizeof(valBuf));
 
     if (idx == activeTab) {
-      u8g2.drawBox(2, y - 9, 124, 11);
+      u8g2.drawBox(1, y - 7, 126, 9);
       u8g2.setDrawColor(0);
-      u8g2.drawStr(4, y, calTabs[idx]);
+      u8g2.drawStr(3, y, def.items[idx].label);
+      uint8_t vw = u8g2.getStrWidth(valBuf);
+      u8g2.drawStr(125 - vw, y, valBuf);
       u8g2.setDrawColor(1);
     } else {
-      u8g2.drawStr(4, y, calTabs[idx]);
+      u8g2.drawStr(3, y, def.items[idx].label);
+      uint8_t vw = u8g2.getStrWidth(valBuf);
+      u8g2.drawStr(125 - vw, y, valBuf);
     }
   }
 
   u8g2.drawHLine(0, 52, 128);
   u8g2.setFont(u8g2_font_4x6_tf);
   u8g2.drawStr(2, 60, "ROTATE: SCROLL");
-  u8g2.drawStr(80, 60, "PUSH: SELECT");
+  u8g2.drawStr(80, 60, "PUSH: EDIT");
 }
-
-static void draw_view_manual_cal(const Core1Snapshot& snap) {
+static void SCREEN_HOT(draw_view_manual_cal)(const Core1Snapshot& snap) {
   char toastBuf[24]; screen_cal_format_toast(snap.calTopology, snap.calStage, toastBuf, sizeof(toastBuf));
   u8g2.setFont(u8g2_font_6x10_tf); u8g2.drawStr(2, 9, toastBuf); u8g2.drawHLine(0, 11, 128);
 
@@ -461,7 +504,7 @@ static void draw_view_manual_cal(const Core1Snapshot& snap) {
 // ---------------------------------------------------------------------------
 // Core 0 Entry Point
 // ---------------------------------------------------------------------------
-void update_u8g2_core0() {
+void SCREEN_HOT(update_u8g2_core0)() {
   uint32_t now = millis();
 
   // 1. Core 0 Local Inspector Timeout Check
@@ -496,6 +539,9 @@ void update_u8g2_core0() {
   snap.calOffset   = offset;
   snap.calAmp440   = ampComp440Display;
   snap.calPwCenter = calPwCenterDisplay;
+  
+  snap.activeMenuMode = activeMenuMode;
+  snap.navMenuIndex = navMenuIndex;
 
   oscSnap = currentOscState;
   lfoSnap = currentLfoState;
@@ -516,28 +562,36 @@ void update_u8g2_core0() {
   }
 
   // Detect transition OUT of Silent mode -> force immediate full refresh
+  // Detect transition OUT of Silent mode -> force immediate full refresh
   if (lastScreenMode == ScreenMode::Silent) {
     oledDirty = true;
   }
 
-  // 4. Dynamic State Change Detection
+  static PatchOscBlock lastOscSnap;
+  static PatchMixBlock lastMixSnap;
+  static PatchLfoBlock lastLfoSnap;
+  static PatchModBlock lastModSnap;
+  static LocalGuiState lastGuiState;
+
+  bool structChanged = false;
+  if (memcmp(&oscSnap, &lastOscSnap, sizeof(PatchOscBlock)) != 0) { structChanged = true; lastOscSnap = oscSnap; }
+  if (memcmp(&mixSnap, &lastMixSnap, sizeof(PatchMixBlock)) != 0) { structChanged = true; lastMixSnap = mixSnap; }
+  if (memcmp(&lfoSnap, &lastLfoSnap, sizeof(PatchLfoBlock)) != 0) { structChanged = true; lastLfoSnap = lfoSnap; }
+  if (memcmp(&modSnap, &lastModSnap, sizeof(PatchModBlock)) != 0) { structChanged = true; lastModSnap = modSnap; }
+  if (memcmp(&guiState, &lastGuiState, sizeof(LocalGuiState)) != 0) { structChanged = true; lastGuiState = guiState; }
+
   if (snap.presetNum != lastPresetNum ||
       strncmp(snap.presetName, lastPresetName, 16) != 0 ||
       mode != lastScreenMode ||
       oledActiveInspector != lastActiveInsp ||
-      calibrationMenuIndex != lastCalMenuIndex ||
+      snap.activeMenuMode != lastMenuMode ||
+      snap.navMenuIndex != lastNavIdx ||
       snap.calStage != lastCalStage ||
       snap.calGap != lastCalGap ||
-      guiState.cutoff != lastCutoff ||
-      guiState.resonance != lastReso ||
-      guiState.env2vcf != lastEnv2vcf ||
-      mixSnap.osc1_level != lastO1Level ||
-      mixSnap.osc2_level != lastO2Level ||
-      mixSnap.sub_level != lastSubLevel) {
+      structChanged) {
     oledDirty = true;
   }
 
-  // Idle check: skip draw if nothing changed
   if (!oledDirty) return;
 
   // Update State Tracking Cache
@@ -545,34 +599,31 @@ void update_u8g2_core0() {
   strncpy(lastPresetName, snap.presetName, 16);
   lastScreenMode   = mode;
   lastActiveInsp   = oledActiveInspector;
-  lastCalMenuIndex = calibrationMenuIndex;
+  lastMenuMode     = snap.activeMenuMode;
+  lastNavIdx       = snap.navMenuIndex;
   lastCalStage     = snap.calStage;
   lastCalGap       = snap.calGap;
-  lastCutoff       = guiState.cutoff;
-  lastReso         = guiState.resonance;
-  lastEnv2vcf      = guiState.env2vcf;
-  lastO1Level      = mixSnap.osc1_level;
-  lastO2Level      = mixSnap.osc2_level;
-  lastSubLevel     = mixSnap.sub_level;
 
   lastOledRefreshMillis = now;
   oledDirty = false;
 
   u8g2.clearBuffer();
 
-  switch (mode) {
-    case ScreenMode::CalibrationMenu:
-      draw_view_cal_menu(calibrationMenuIndex);
-      break;
-
-    case ScreenMode::ManualCalibration:
-      draw_view_manual_cal(snap);
-      break;
-
-    case ScreenMode::PresetScroll:
-    case ScreenMode::LoadSaveExit:
-    default:
-      if (oledActiveInspector != InspectorType::None) {
+  if (mode == ScreenMode::ManualCalibration) {
+    // The visual gap tracker
+    draw_view_manual_cal(snap);
+  } 
+  else if (snap.activeMenuMode == 8) {
+    // Custom Mod Matrix Rendering Table
+    draw_view_mod_matrix(snap.navMenuIndex, modSnap);
+  }
+  else if (snap.activeMenuMode != 0) {
+    // Any of the other generic menu lists (Envelopes, Calibration, LFOs, etc)
+    draw_view_generic_menu(snap.activeMenuMode, snap.navMenuIndex, oscSnap, mixSnap, lfoSnap);
+  } 
+  else {
+    // Standard Dashboard or Inspectors
+    if (oledActiveInspector != InspectorType::None) {
         switch (oledActiveInspector) {
           case InspectorType::Filter:      draw_inspector_filter(mixSnap); break;
           case InspectorType::Oscillators: draw_inspector_osc(oscSnap, mixSnap, lfoSnap); break;
@@ -588,7 +639,6 @@ void update_u8g2_core0() {
       } else {
         draw_view_preset_enhanced(snap, oscSnap, mixSnap, modSnap);
       }
-      break;
   }
 
   u8g2.sendBuffer();
